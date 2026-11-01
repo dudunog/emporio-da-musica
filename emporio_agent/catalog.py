@@ -1,9 +1,24 @@
 import csv
 import functools
+import json
 import sqlite3
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from typing import Literal
+
+ProductCategory = Literal[
+    "guitarras",
+    "baixos",
+    "baterias_percussao",
+    "teclados_pianos",
+    "violoes",
+    "sopro_madeiras",
+    "sopro_metais",
+    "cordas_orquestrais",
+    "ukuleles",
+]
+Availability = Literal["in_stock", "out_of_stock", "discontinued", "coming_soon"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +29,38 @@ class Promotion:
 
 @dataclass(frozen=True, slots=True)
 class PriceQuote:
+    list_price_brl: Decimal | None
+    promotion: Promotion | None
+    promotional_price_brl: Decimal | None
+    pix_price_brl: Decimal | None
+    pix_note: str | None
+    best_cash_price_brl: Decimal | None
+    max_installments: int | None
+    installment_value_brl: Decimal | None
+    installment_note: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProductSummary:
+    product_id: int
+    name: str
+    category: ProductCategory
+    availability: Availability
+    list_price_brl: Decimal | None
+    promotional_price_brl: Decimal | None
+    discount_percent: int | None
+    strings: str | None
+    electronics: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProductDetail:
+    product_id: int
+    name: str
+    category: ProductCategory
+    availability: Availability
+    description: str
+    specs: dict[str, str]
     list_price_brl: Decimal | None
     promotion: Promotion | None
     promotional_price_brl: Decimal | None
@@ -66,6 +113,42 @@ NO_PRICE_QUOTE = PriceQuote(
     installment_value_brl=None,
     installment_note=None,
 )
+
+CATEGORY_IDS: dict[ProductCategory, int] = {
+    "guitarras": 1,
+    "baixos": 2,
+    "baterias_percussao": 3,
+    "teclados_pianos": 4,
+    "violoes": 5,
+    "sopro_madeiras": 6,
+    "sopro_metais": 7,
+    "cordas_orquestrais": 8,
+    "ukuleles": 9,
+}
+CATEGORY_SLUGS: dict[int, ProductCategory] = {
+    category_id: category for category, category_id in CATEGORY_IDS.items()
+}
+AVAILABILITY_BY_STATUS: dict[str, Availability] = {
+    "discontinued": "discontinued",
+    "coming_soon": "coming_soon",
+}
+SPEC_KEYS = (
+    "top",
+    "back_sides",
+    "neck",
+    "strings",
+    "scale",
+    "electronics",
+    "color",
+    "body",
+    "keys",
+    "polyphony",
+    "shells",
+    "pieces",
+    "hardware",
+    "type",
+)
+ELECTRONICS_FLAGS: dict[str, bool] = {"yes": True, "no": False}
 
 CREATE_TABLES_SQL = """
 CREATE TABLE categories (
@@ -168,6 +251,16 @@ CSV_TABLES: dict[str, tuple[str, tuple[str, ...]]] = {
     ORDER_ITEMS_CSV: (INSERT_ORDER_ITEM_SQL, ORDER_ITEM_COLUMNS),
 }
 
+PRODUCT_BY_ID_SQL = """
+SELECT products.product_id, products.name, products.category_id, products.price_cents,
+       products.stock_quantity, products.status, products.specs, products.description,
+       promotions.discount_percent, promotions.description AS promotion_name
+FROM products
+LEFT JOIN promotions
+    ON promotions.product_id = products.product_id AND promotions.is_active = 1
+WHERE products.product_id = ?
+"""
+
 
 def load_catalog(data_dir: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:", check_same_thread=False)
@@ -241,4 +334,67 @@ def price_quote(list_price: Decimal, promotion: Promotion | None) -> PriceQuote:
         max_installments=max_installments,
         installment_value_brl=installment_value,
         installment_note=INSTALLMENT_NOTE,
+    )
+
+
+def availability_of(status: str, stock_quantity: int) -> Availability:
+    stock_availability: Availability = "in_stock" if stock_quantity > 0 else "out_of_stock"
+    return AVAILABILITY_BY_STATUS.get(status, stock_availability)
+
+
+def selected_specs(raw_specs: str) -> dict[str, str]:
+    specs: dict[str, str] = json.loads(raw_specs)
+    return {key: specs[key] for key in SPEC_KEYS if key in specs}
+
+
+def promotion_from_row(row: sqlite3.Row) -> Promotion | None:
+    if row["discount_percent"] is None:
+        return None
+    return Promotion(name=row["promotion_name"], discount_percent=row["discount_percent"])
+
+
+def price_quote_from_row(row: sqlite3.Row) -> PriceQuote:
+    if row["status"] == "discontinued":
+        return NO_PRICE_QUOTE
+    return price_quote(brl_from_cents(row["price_cents"]), promotion_from_row(row))
+
+
+def summary_from_row(row: sqlite3.Row) -> ProductSummary:
+    quote = price_quote_from_row(row)
+    specs = selected_specs(row["specs"])
+    return ProductSummary(
+        product_id=row["product_id"],
+        name=row["name"],
+        category=CATEGORY_SLUGS[row["category_id"]],
+        availability=availability_of(row["status"], row["stock_quantity"]),
+        list_price_brl=quote.list_price_brl,
+        promotional_price_brl=quote.promotional_price_brl,
+        discount_percent=None if quote.promotion is None else quote.promotion.discount_percent,
+        strings=specs.get("strings"),
+        electronics=ELECTRONICS_FLAGS.get(specs.get("electronics", "")),
+    )
+
+
+def get_product(product_id: int) -> ProductDetail | None:
+    row = catalog_connection().execute(PRODUCT_BY_ID_SQL, (product_id,)).fetchone()
+    if row is None:
+        return None
+    summary = summary_from_row(row)
+    quote = price_quote_from_row(row)
+    return ProductDetail(
+        product_id=summary.product_id,
+        name=summary.name,
+        category=summary.category,
+        availability=summary.availability,
+        description=row["description"],
+        specs=selected_specs(row["specs"]),
+        list_price_brl=quote.list_price_brl,
+        promotion=quote.promotion,
+        promotional_price_brl=quote.promotional_price_brl,
+        pix_price_brl=quote.pix_price_brl,
+        pix_note=quote.pix_note,
+        best_cash_price_brl=quote.best_cash_price_brl,
+        max_installments=quote.max_installments,
+        installment_value_brl=quote.installment_value_brl,
+        installment_note=quote.installment_note,
     )
