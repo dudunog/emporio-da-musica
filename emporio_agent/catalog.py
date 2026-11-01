@@ -3,6 +3,7 @@ import functools
 import json
 import sqlite3
 from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
@@ -19,6 +20,8 @@ ProductCategory = Literal[
     "ukuleles",
 ]
 Availability = Literal["in_stock", "out_of_stock", "discontinued", "coming_soon"]
+OrderStatus = Literal["pending", "confirmed", "shipped", "delivered", "cancelled"]
+OrderLookupFailureReason = Literal["ambiguous_contact", "not_found"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +75,53 @@ class ProductDetail:
     installment_note: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class OrderItem:
+    product_name: str
+    quantity: int
+
+
+@dataclass(frozen=True, slots=True)
+class DeliveryWindows:
+    received_on: date | None
+    withdrawal_deadline: date | None
+    withdrawal_window_open: bool | None
+    defect_exchange_deadline: date | None
+    defect_exchange_window_open: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class OrderDetail:
+    found: Literal[True]
+    order_id: int
+    customer_first_name: str
+    order_date: date
+    status: OrderStatus
+    status_label: str
+    payment_method_label: str
+    total_brl: Decimal
+    items: tuple[OrderItem, ...]
+    delivery_city: str
+    tracking_code: str | None
+    estimated_delivery: date | None
+    estimated_delivery_has_passed: bool | None
+    cancellation_reason: str | None
+    received_on: date | None
+    withdrawal_deadline: date | None
+    withdrawal_window_open: bool | None
+    defect_exchange_deadline: date | None
+    defect_exchange_window_open: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class OrderLookupFailure:
+    found: Literal[False]
+    reason: OrderLookupFailureReason
+    message: str
+
+
+OrderStatusResult = OrderDetail | OrderLookupFailure
+
 DATA_DIR = Path(__file__).parent.parent / "data"
 CATEGORIES_CSV = "desafio_tecnico_ai_eng - categories.csv"
 CUSTOMERS_CSV = "desafio_tecnico_ai_eng - customers.csv"
@@ -95,6 +145,8 @@ INSTALLMENT_MINIMUM_BRL: dict[int, Decimal] = {
     **dict.fromkeys((4, 5, 6), MINIMUM_INSTALLMENT_BRL_4_TO_6),
     **dict.fromkeys(range(7, MAX_INSTALLMENTS + 1), MINIMUM_INSTALLMENT_BRL_7_TO_12),
 }
+WITHDRAWAL_WINDOW_DAYS = 7
+DEFECT_EXCHANGE_WINDOW_DAYS = 30
 
 PIX_NOTE_LIST_PRICE = "Preço à vista no PIX com 5% de desconto."
 PIX_NOTE_PROMOTIONAL = (
@@ -149,6 +201,42 @@ SPEC_KEYS = (
     "type",
 )
 ELECTRONICS_FLAGS: dict[str, bool] = {"yes": True, "no": False}
+
+ORDER_STATUS_LABELS: dict[OrderStatus, str] = {
+    "pending": "pendente",
+    "confirmed": "confirmado",
+    "shipped": "enviado",
+    "delivered": "entregue",
+    "cancelled": "cancelado",
+}
+PAYMENT_METHOD_LABELS: dict[str, str] = {
+    "pix": "PIX",
+    "debit": "cartão de débito",
+    "credit_3x": "cartão de crédito em 3x",
+    "credit_6x": "cartão de crédito em 6x",
+    "credit_12x": "cartão de crédito em 12x",
+    "boleto": "boleto bancário",
+}
+NO_DELIVERY_WINDOWS = DeliveryWindows(
+    received_on=None,
+    withdrawal_deadline=None,
+    withdrawal_window_open=None,
+    defect_exchange_deadline=None,
+    defect_exchange_window_open=None,
+)
+ORDER_NOT_FOUND = OrderLookupFailure(
+    found=False,
+    reason="not_found",
+    message=(
+        "Não localizei um pedido com esses dados. Peça ao cliente para conferir "
+        "o número do pedido e o e-mail ou telefone cadastrado."
+    ),
+)
+AMBIGUOUS_CONTACT = OrderLookupFailure(
+    found=False,
+    reason="ambiguous_contact",
+    message="Mais de um cadastro usa esse e-mail. Peça o telefone cadastrado para confirmar.",
+)
 
 CREATE_TABLES_SQL = """
 CREATE TABLE categories (
@@ -259,6 +347,26 @@ FROM products
 LEFT JOIN promotions
     ON promotions.product_id = products.product_id AND promotions.is_active = 1
 WHERE products.product_id = ?
+"""
+SHARED_EMAIL_COUNT_SQL = "SELECT count(*) FROM customers WHERE lower(trim(email)) = ?"
+ORDER_BY_ID_AND_CONTACT_SQL = """
+SELECT orders.order_id, orders.order_date, orders.status, orders.total_cents,
+       orders.payment_method, orders.tracking_code, orders.estimated_delivery, orders.notes,
+       customers.name AS customer_name, customers.city AS delivery_city
+FROM orders
+JOIN customers ON customers.customer_id = orders.customer_id
+WHERE orders.order_id = ?
+  AND (
+    lower(trim(customers.email)) = ?
+    OR replace(replace(replace(replace(customers.phone, '(', ''), ')', ''), '-', ''), ' ', '') = ?
+  )
+"""
+ORDER_ITEMS_SQL = """
+SELECT products.name AS product_name, order_items.quantity
+FROM order_items
+JOIN products ON products.product_id = order_items.product_id
+WHERE order_items.order_id = ?
+ORDER BY products.name ASC
 """
 
 
@@ -398,3 +506,104 @@ def get_product(product_id: int) -> ProductDetail | None:
         installment_value_brl=quote.installment_value_brl,
         installment_note=quote.installment_note,
     )
+
+
+def normalized_email(customer_email: str | None) -> str | None:
+    if customer_email is None:
+        return None
+    return customer_email.strip().lower()
+
+
+def phone_digits(customer_phone: str | None) -> str | None:
+    if customer_phone is None:
+        return None
+    return "".join(character for character in customer_phone if character.isdigit())
+
+
+def email_is_shared(customer_email: str | None) -> bool:
+    if customer_email is None:
+        return False
+    row = catalog_connection().execute(SHARED_EMAIL_COUNT_SQL, (customer_email,)).fetchone()
+    customers_with_email: int = row[0]
+    return customers_with_email > 1
+
+
+def optional_date(raw_date: str | None) -> date | None:
+    if raw_date is None:
+        return None
+    return date.fromisoformat(raw_date)
+
+
+def has_passed(deadline: date | None, today: date) -> bool | None:
+    if deadline is None:
+        return None
+    return today > deadline
+
+
+def delivery_windows(row: sqlite3.Row, today: date) -> DeliveryWindows:
+    received_on = optional_date(row["estimated_delivery"])
+    if row["status"] != "delivered" or received_on is None:
+        return NO_DELIVERY_WINDOWS
+    withdrawal_deadline = received_on + timedelta(days=WITHDRAWAL_WINDOW_DAYS)
+    order_date = date.fromisoformat(row["order_date"])
+    defect_exchange_deadline = order_date + timedelta(days=DEFECT_EXCHANGE_WINDOW_DAYS)
+    return DeliveryWindows(
+        received_on=received_on,
+        withdrawal_deadline=withdrawal_deadline,
+        withdrawal_window_open=today <= withdrawal_deadline,
+        defect_exchange_deadline=defect_exchange_deadline,
+        defect_exchange_window_open=today <= defect_exchange_deadline,
+    )
+
+
+def order_items_of(order_id: int) -> tuple[OrderItem, ...]:
+    rows = catalog_connection().execute(ORDER_ITEMS_SQL, (order_id,)).fetchall()
+    return tuple(
+        OrderItem(product_name=row["product_name"], quantity=row["quantity"]) for row in rows
+    )
+
+
+def order_detail_from_row(row: sqlite3.Row, today: date) -> OrderDetail:
+    status: OrderStatus = row["status"]
+    estimated_delivery = optional_date(row["estimated_delivery"])
+    windows = delivery_windows(row, today)
+    return OrderDetail(
+        found=True,
+        order_id=row["order_id"],
+        customer_first_name=row["customer_name"].split()[0],
+        order_date=date.fromisoformat(row["order_date"]),
+        status=status,
+        status_label=ORDER_STATUS_LABELS[status],
+        payment_method_label=PAYMENT_METHOD_LABELS[row["payment_method"]],
+        total_brl=brl_from_cents(row["total_cents"]),
+        items=order_items_of(row["order_id"]),
+        delivery_city=row["delivery_city"],
+        tracking_code=row["tracking_code"],
+        estimated_delivery=estimated_delivery,
+        estimated_delivery_has_passed=has_passed(estimated_delivery, today),
+        cancellation_reason=row["notes"] if status == "cancelled" else None,
+        received_on=windows.received_on,
+        withdrawal_deadline=windows.withdrawal_deadline,
+        withdrawal_window_open=windows.withdrawal_window_open,
+        defect_exchange_deadline=windows.defect_exchange_deadline,
+        defect_exchange_window_open=windows.defect_exchange_window_open,
+    )
+
+
+def get_order_status(
+    order_id: int,
+    customer_email: str | None,
+    customer_phone: str | None,
+    today: date,
+) -> OrderStatusResult:
+    if customer_email is None and customer_phone is None:
+        raise ValueError("customer_email or customer_phone is required to look up an order")
+    email = normalized_email(customer_email)
+    shared_email = email_is_shared(email)
+    if shared_email and customer_phone is None:
+        return AMBIGUOUS_CONTACT
+    parameters = (order_id, None if shared_email else email, phone_digits(customer_phone))
+    row = catalog_connection().execute(ORDER_BY_ID_AND_CONTACT_SQL, parameters).fetchone()
+    if row is None:
+        return ORDER_NOT_FOUND
+    return order_detail_from_row(row, today)

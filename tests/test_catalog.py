@@ -1,11 +1,16 @@
 from dataclasses import asdict
+from datetime import date
 from decimal import Decimal
 
 from emporio_agent.catalog import (
     availability_of,
     catalog_connection,
+    get_order_status,
     get_product,
 )
+
+TODAY = date(2026, 11, 1)
+CONTACT_FIELDS = {"phone", "email", "customer_id", "city", "address", "customer_email"}
 
 
 def test_connection_is_created_once() -> None:
@@ -60,3 +65,12 @@ def test_coming_soon_product_is_marked_coming_soon() -> None:
 
 def test_get_product_returns_none_for_unknown_id() -> None:
     assert get_product(999) is None
+
+
+def test_order_status_hides_customer_contact() -> None:
+    order = get_order_status(8, "anacarol.ferreira@coldmail.com", None, TODAY)
+    payload = asdict(order)
+    assert payload["found"] is True
+    assert not CONTACT_FIELDS & set(payload)
+    assert payload["delivery_city"] == "Campo Grande"
+    assert payload["customer_first_name"] == "Ana"
