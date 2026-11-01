@@ -76,6 +76,30 @@ class ProductDetail:
 
 
 @dataclass(frozen=True, slots=True)
+class ActivePromotion:
+    product_id: int
+    name: str
+    list_price_brl: Decimal
+    discount_percent: int
+    promotional_price_brl: Decimal
+    promotion_name: str
+    availability: Availability
+
+
+@dataclass(frozen=True, slots=True)
+class StoreInfo:
+    name: str
+    slogan: str
+    address: str
+    phone: str
+    whatsapp: str
+    email: str
+    opening_hours: dict[str, str]
+    founded: int
+    cnpj: str
+
+
+@dataclass(frozen=True, slots=True)
 class OrderItem:
     product_name: str
     quantity: int
@@ -238,6 +262,22 @@ AMBIGUOUS_CONTACT = OrderLookupFailure(
     message="Mais de um cadastro usa esse e-mail. Peça o telefone cadastrado para confirmar.",
 )
 
+STORE_INFO = StoreInfo(
+    name="Empório da Música",
+    slogan="Sua música começa aqui",
+    address="Rua 14 de Maio, 3200, Centro, Campo Grande - MS, CEP 79202-333",
+    phone="(67) 3341-4444",
+    whatsapp="(67) 3321-4500",
+    email="contato@emporiodamusica.com.br",
+    opening_hours={
+        "segunda_a_sexta": "09:00 às 18:00",
+        "sabado": "09:00 às 13:00",
+        "domingo_e_feriados": "fechado",
+    },
+    founded=2008,
+    cnpj="12.345.678/0001-90",
+)
+
 CREATE_TABLES_SQL = """
 CREATE TABLE categories (
     category_id INTEGER PRIMARY KEY,
@@ -348,6 +388,28 @@ LEFT JOIN promotions
     ON promotions.product_id = products.product_id AND promotions.is_active = 1
 WHERE products.product_id = ?
 """
+SEARCH_PRODUCTS_SQL = """
+SELECT products.product_id, products.name, products.category_id, products.price_cents,
+       products.stock_quantity, products.status, products.specs, products.description,
+       promotions.discount_percent, promotions.description AS promotion_name
+FROM products
+LEFT JOIN promotions
+    ON promotions.product_id = products.product_id AND promotions.is_active = 1
+WHERE (? IS NULL OR lower(products.name) LIKE ? OR lower(products.description) LIKE ?)
+  AND (? IS NULL OR products.category_id = ?)
+  AND (? IS NULL OR products.price_cents >= ?)
+  AND (? IS NULL OR products.price_cents <= ?)
+  AND (? IS NOT NULL OR products.status != 'discontinued')
+ORDER BY products.price_cents ASC, products.product_id ASC
+"""
+ACTIVE_PROMOTIONS_SQL = """
+SELECT products.product_id, products.name, products.price_cents, products.stock_quantity,
+       products.status, promotions.discount_percent, promotions.description AS promotion_name
+FROM promotions
+JOIN products ON products.product_id = promotions.product_id
+WHERE promotions.is_active = 1
+ORDER BY products.price_cents ASC, products.product_id ASC
+"""
 SHARED_EMAIL_COUNT_SQL = "SELECT count(*) FROM customers WHERE lower(trim(email)) = ?"
 ORDER_BY_ID_AND_CONTACT_SQL = """
 SELECT orders.order_id, orders.order_date, orders.status, orders.total_cents,
@@ -395,6 +457,12 @@ def format_brl(value: Decimal) -> str:
 
 def brl_from_cents(cents: int) -> Decimal:
     return (Decimal(cents) / CENTS_PER_BRL).quantize(CENTS)
+
+
+def cents_from_brl(value: Decimal | None) -> int | None:
+    if value is None:
+        return None
+    return int((value * CENTS_PER_BRL).to_integral_value(rounding=ROUND_HALF_UP))
 
 
 def pix_price(list_price: Decimal) -> Decimal:
@@ -483,6 +551,47 @@ def summary_from_row(row: sqlite3.Row) -> ProductSummary:
     )
 
 
+def like_pattern_of(query: str | None) -> str | None:
+    if query is None:
+        return None
+    return "%" + query.strip().lower() + "%"
+
+
+def category_id_of(category: ProductCategory | None) -> int | None:
+    if category is None:
+        return None
+    return CATEGORY_IDS[category]
+
+
+def search_products(
+    query: str | None,
+    category: ProductCategory | None,
+    min_price_brl: Decimal | None,
+    max_price_brl: Decimal | None,
+) -> list[ProductSummary]:
+    search_filters = (query, category, min_price_brl, max_price_brl)
+    if all(search_filter is None for search_filter in search_filters):
+        return []
+    like_pattern = like_pattern_of(query)
+    category_id = category_id_of(category)
+    min_cents = cents_from_brl(min_price_brl)
+    max_cents = cents_from_brl(max_price_brl)
+    parameters = (
+        like_pattern,
+        like_pattern,
+        like_pattern,
+        category_id,
+        category_id,
+        min_cents,
+        min_cents,
+        max_cents,
+        max_cents,
+        like_pattern,
+    )
+    rows = catalog_connection().execute(SEARCH_PRODUCTS_SQL, parameters).fetchall()
+    return [summary_from_row(row) for row in rows]
+
+
 def get_product(product_id: int) -> ProductDetail | None:
     row = catalog_connection().execute(PRODUCT_BY_ID_SQL, (product_id,)).fetchone()
     if row is None:
@@ -506,6 +615,28 @@ def get_product(product_id: int) -> ProductDetail | None:
         installment_value_brl=quote.installment_value_brl,
         installment_note=quote.installment_note,
     )
+
+
+def active_promotion_from_row(row: sqlite3.Row) -> ActivePromotion:
+    list_price = brl_from_cents(row["price_cents"])
+    return ActivePromotion(
+        product_id=row["product_id"],
+        name=row["name"],
+        list_price_brl=list_price,
+        discount_percent=row["discount_percent"],
+        promotional_price_brl=promotional_price(list_price, row["discount_percent"]),
+        promotion_name=row["promotion_name"],
+        availability=availability_of(row["status"], row["stock_quantity"]),
+    )
+
+
+def list_active_promotions() -> list[ActivePromotion]:
+    rows = catalog_connection().execute(ACTIVE_PROMOTIONS_SQL).fetchall()
+    return [active_promotion_from_row(row) for row in rows]
+
+
+def get_store_info() -> StoreInfo:
+    return STORE_INFO
 
 
 def normalized_email(customer_email: str | None) -> str | None:
