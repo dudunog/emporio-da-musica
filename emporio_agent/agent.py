@@ -17,6 +17,7 @@ from anthropic.types import (
     ToolUseBlock,
 )
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from dotenv import load_dotenv
 
 from emporio_agent.tools import TOOL_DEFINITIONS, dispatch_tool
 
@@ -27,7 +28,12 @@ MAX_TOOL_ROUNDS = 8
 MAX_OUTPUT_TOKENS = 1024
 OUTPUT_CONFIG: OutputConfigParam = {"effort": "low"}
 SYSTEM_PROMPT_PATH = Path(__file__).parent / "system-prompt.md"
+DOTENV_PATH = Path(__file__).parent.parent / ".env"
 SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+GREETING = (
+    "Oi! Eu sou a Lia, atendimento virtual da Empório da Música. "
+    "Posso ajudar com produtos, preços, pedidos, trocas e informações da loja."
+)
 TODAY_SECTION_TITLE = "Data de hoje"
 TODAY_TEMPLATE = (
     "Hoje é {weekday}, {label} ({iso}). Prazos de devolução, troca e entrega já chegam "
@@ -72,7 +78,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class MessageCreator(Protocol):
-    def create(self, **params: Unpack[MessageCreateParamsNonStreaming]) -> Message: ...
+    def create(self, **request: Unpack[MessageCreateParamsNonStreaming]) -> Message: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +107,7 @@ def resolve_model() -> str:
 
 
 def create_client() -> anthropic.Anthropic:
+    load_dotenv(DOTENV_PATH)
     api_key = os.environ.get(API_KEY_ENVIRONMENT_VARIABLE, "").strip()
     if not api_key:
         LOGGER.error("%s is not set", API_KEY_ENVIRONMENT_VARIABLE)
@@ -135,6 +142,9 @@ def as_tool_param(definition: dict[str, object]) -> ToolParam:
     return {"name": name, "description": description, "input_schema": input_schema, "strict": True}
 
 
+TOOL_PARAMS: list[ToolParam] = [as_tool_param(definition) for definition in TOOL_DEFINITIONS]
+
+
 def unavailable_reason(api_error: anthropic.APIError) -> UnavailableReason:
     for error_type, reason in SDK_ERROR_REASONS:
         if isinstance(api_error, error_type):
@@ -151,7 +161,7 @@ def create_message(
             max_tokens=MAX_OUTPUT_TOKENS,
             system=system,
             messages=messages,
-            tools=[as_tool_param(definition) for definition in TOOL_DEFINITIONS],
+            tools=TOOL_PARAMS,
             output_config=OUTPUT_CONFIG,
         )
     except anthropic.APIError as api_error:

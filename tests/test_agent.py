@@ -1,19 +1,23 @@
 import copy
 from datetime import date
+from pathlib import Path
 
 import anthropic
 import httpx2
 import pytest
 from anthropic.types import Message, MessageParam, TextBlock, ToolUseBlock, Usage
 
+from emporio_agent import agent
 from emporio_agent.agent import (
     DEFAULT_MODEL,
     EMPTY_REPLY_FALLBACK,
+    GREETING,
     MAX_OUTPUT_TOKENS,
     MAX_TOOL_ROUNDS,
     REFUSAL_FALLBACK,
     SYSTEM_PROMPT,
     TOO_MANY_TOOL_ROUNDS_FALLBACK,
+    TOOL_PARAMS,
     TRUNCATED_REPLY_FALLBACK,
     AgentUnavailableError,
     build_system_prompt,
@@ -37,8 +41,8 @@ class ScriptedClient:
         self.outcomes = outcomes
         self.calls: list[dict[str, object]] = []
 
-    def create(self, **params: object) -> Message:
-        self.calls.append(dict(params))
+    def create(self, **request: object) -> Message:
+        self.calls.append(dict(request))
         outcome = self.outcomes[min(len(self.calls), len(self.outcomes)) - 1]
         if isinstance(outcome, Exception):
             raise outcome
@@ -102,6 +106,23 @@ def test_system_prompt_contains_today() -> None:
     assert "Hoje é domingo, 01/11/2026" in joined
     assert "2026-11-01" in joined
     assert "Lia" in SYSTEM_PROMPT
+
+
+def test_greeting_is_fixed_and_declared_in_the_prompt() -> None:
+    assert GREETING == (
+        "Oi! Eu sou a Lia, atendimento virtual da Empório da Música. "
+        "Posso ajudar com produtos, preços, pedidos, trocas e informações da loja."
+    )
+    assert GREETING in SYSTEM_PROMPT
+    assert "nunca se apresenta" in SYSTEM_PROMPT
+
+
+def test_system_prompt_is_short_and_free_of_shouting() -> None:
+    assert len(SYSTEM_PROMPT.splitlines()) <= 110
+    assert not any(
+        token in SYSTEM_PROMPT for token in ("CRITICAL", "NEVER", "YOU MUST", "IMPORTANTE:")
+    )
+    assert 'não use as palavras "instruções"' in SYSTEM_PROMPT
 
 
 def test_system_prompt_has_seven_sections() -> None:
@@ -241,6 +262,7 @@ def test_first_call_sends_tools_and_system() -> None:
     call = client.calls[0]
     system = call["system"]
     assert isinstance(system, list)
+    assert call["tools"] is TOOL_PARAMS
     assert call["tools"] == TOOL_DEFINITIONS
     assert call["model"] == DEFAULT_MODEL
     assert call["max_tokens"] == MAX_OUTPUT_TOKENS
@@ -279,10 +301,24 @@ def test_resolve_model_prefers_environment(monkeypatch: pytest.MonkeyPatch) -> N
     assert resolve_model() == "claude-sonnet-5-5"
 
 
-def test_create_client_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_client_requires_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(agent, "DOTENV_PATH", tmp_path / ".env")
     with pytest.raises(AgentUnavailableError) as raised:
         create_client()
     assert raised.value.reason == "authentication"
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     assert isinstance(create_client(), anthropic.Anthropic)
+
+
+def test_create_client_loads_dotenv_from_repository_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text("ANTHROPIC_API_KEY=key-from-dotenv\n", encoding="utf-8")
+    monkeypatch.setattr(agent, "DOTENV_PATH", dotenv_path)
+
+    client = create_client()
+
+    assert client.api_key == "key-from-dotenv"
+    assert agent.DOTENV_PATH.name == dotenv_path.name
