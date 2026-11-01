@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=2.3.0",
+    "pypdf>=6.21.4",
     "python-dotenv>=1.2.0",
     "streamlit>=1.66.0",
 ]
@@ -22,8 +23,34 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "ANN", "PL"]
+select = [
+    "E",
+    "F",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "SIM",
+    "RUF",
+    "ANN",
+    "PL",
+    "RET",
+    "C90",
+    "ERA",
+    "T20",
+    "ARG",
+    "S608",
+]
 ignore = ["PLR2004"]
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-branches = 6
+max-returns = 4
+max-statements = 20
+
+[tool.ruff.lint.mccabe]
+max-complexity = 6
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN", "PLR"]
@@ -32,10 +59,16 @@ ignore = ["PLR2004"]
 strict = true
 python_version = "3.12"
 files = ["emporio_agent"]
+disallow_any_explicit = true
+disallow_any_unimported = true
+warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = ["streamlit.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--strict-markers", "--strict-config"]
+filterwarnings = ["error"]
+markers = ["live: calls the real model API"]
