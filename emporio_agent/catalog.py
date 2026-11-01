@@ -1,7 +1,29 @@
 import csv
 import functools
 import sqlite3
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+
+
+@dataclass(frozen=True, slots=True)
+class Promotion:
+    name: str
+    discount_percent: int
+
+
+@dataclass(frozen=True, slots=True)
+class PriceQuote:
+    list_price_brl: Decimal | None
+    promotion: Promotion | None
+    promotional_price_brl: Decimal | None
+    pix_price_brl: Decimal | None
+    pix_note: str | None
+    best_cash_price_brl: Decimal | None
+    max_installments: int | None
+    installment_value_brl: Decimal | None
+    installment_note: str | None
+
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CATEGORIES_CSV = "desafio_tecnico_ai_eng - categories.csv"
@@ -10,6 +32,40 @@ ORDERS_CSV = "desafio_tecnico_ai_eng - orders.csv"
 ORDER_ITEMS_CSV = "desafio_tecnico_ai_eng - order_items.csv"
 PRODUCTS_CSV = "desafio_tecnico_ai_eng - products.csv"
 PROMOTIONS_CSV = "desafio_tecnico_ai_eng - promotions.csv"
+
+CENTS = Decimal("0.01")
+CENTS_PER_BRL = Decimal(100)
+PERCENT = Decimal(100)
+BRL_SEPARATORS = str.maketrans(",.", ".,")
+PIX_DISCOUNT_PERCENT = 5
+MAX_INSTALLMENTS = 12
+MINIMUM_INSTALLMENT_BRL_UP_TO_3 = Decimal("50")
+MINIMUM_INSTALLMENT_BRL_4_TO_6 = Decimal("80")
+MINIMUM_INSTALLMENT_BRL_7_TO_12 = Decimal("100")
+INSTALLMENT_MINIMUM_BRL: dict[int, Decimal] = {
+    1: Decimal(0),
+    **dict.fromkeys((2, 3), MINIMUM_INSTALLMENT_BRL_UP_TO_3),
+    **dict.fromkeys((4, 5, 6), MINIMUM_INSTALLMENT_BRL_4_TO_6),
+    **dict.fromkeys(range(7, MAX_INSTALLMENTS + 1), MINIMUM_INSTALLMENT_BRL_7_TO_12),
+}
+
+PIX_NOTE_LIST_PRICE = "Preço à vista no PIX com 5% de desconto."
+PIX_NOTE_PROMOTIONAL = (
+    "O desconto de 5% do PIX não se aplica a preço promocional; "
+    "à vista no PIX paga o preço promocional."
+)
+INSTALLMENT_NOTE = "sem juros no cartão de crédito"
+NO_PRICE_QUOTE = PriceQuote(
+    list_price_brl=None,
+    promotion=None,
+    promotional_price_brl=None,
+    pix_price_brl=None,
+    pix_note=None,
+    best_cash_price_brl=None,
+    max_installments=None,
+    installment_value_brl=None,
+    installment_note=None,
+)
 
 CREATE_TABLES_SQL = """
 CREATE TABLE categories (
@@ -130,3 +186,59 @@ def load_catalog(data_dir: Path) -> sqlite3.Connection:
 @functools.cache
 def catalog_connection() -> sqlite3.Connection:
     return load_catalog(DATA_DIR)
+
+
+def format_brl(value: Decimal) -> str:
+    return "R$ " + format(value.quantize(CENTS), ",.2f").translate(BRL_SEPARATORS)
+
+
+def brl_from_cents(cents: int) -> Decimal:
+    return (Decimal(cents) / CENTS_PER_BRL).quantize(CENTS)
+
+
+def pix_price(list_price: Decimal) -> Decimal:
+    return promotional_price(list_price, PIX_DISCOUNT_PERCENT)
+
+
+def promotional_price(list_price: Decimal, discount_percent: int) -> Decimal:
+    discounted = list_price * (PERCENT - discount_percent) / PERCENT
+    return discounted.quantize(CENTS, rounding=ROUND_HALF_UP)
+
+
+def installment_plan(price: Decimal) -> tuple[int, Decimal]:
+    allowed_counts = [
+        count for count, minimum in INSTALLMENT_MINIMUM_BRL.items() if price >= minimum * count
+    ]
+    max_installments = max(allowed_counts)
+    installment_value = (price / max_installments).quantize(CENTS, rounding=ROUND_HALF_UP)
+    return max_installments, installment_value
+
+
+def price_quote(list_price: Decimal, promotion: Promotion | None) -> PriceQuote:
+    if promotion is None:
+        cash_price = pix_price(list_price)
+        max_installments, installment_value = installment_plan(list_price)
+        return PriceQuote(
+            list_price_brl=list_price,
+            promotion=None,
+            promotional_price_brl=None,
+            pix_price_brl=cash_price,
+            pix_note=PIX_NOTE_LIST_PRICE,
+            best_cash_price_brl=cash_price,
+            max_installments=max_installments,
+            installment_value_brl=installment_value,
+            installment_note=INSTALLMENT_NOTE,
+        )
+    cash_price = promotional_price(list_price, promotion.discount_percent)
+    max_installments, installment_value = installment_plan(cash_price)
+    return PriceQuote(
+        list_price_brl=list_price,
+        promotion=promotion,
+        promotional_price_brl=cash_price,
+        pix_price_brl=None,
+        pix_note=PIX_NOTE_PROMOTIONAL,
+        best_cash_price_brl=cash_price,
+        max_installments=max_installments,
+        installment_value_brl=installment_value,
+        installment_note=INSTALLMENT_NOTE,
+    )
