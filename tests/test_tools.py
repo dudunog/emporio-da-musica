@@ -25,7 +25,7 @@ def handler_payload(name: str, arguments: dict[str, object]) -> object:
 
 def test_search_products_tool() -> None:
     arguments: dict[str, object] = {
-        "query": None,
+        "name_contains": None,
         "category": "violoes",
         "min_price_brl": None,
         "max_price_brl": 1000,
@@ -44,7 +44,7 @@ def test_search_products_tool() -> None:
 
 def test_search_products_tool_requires_a_filter() -> None:
     arguments: dict[str, object] = {
-        "query": None,
+        "name_contains": None,
         "category": None,
         "min_price_brl": None,
         "max_price_brl": None,
@@ -52,6 +52,37 @@ def test_search_products_tool_requires_a_filter() -> None:
     tool_result = dispatch_tool("search_products", arguments, TODAY)
     assert tool_result.is_error is True
     assert "at least one filter" in tool_result.content
+
+
+def test_search_products_tool_finds_by_tokens() -> None:
+    arguments: dict[str, object] = {
+        "name_contains": "Yamaha F310 violão",
+        "category": None,
+        "min_price_brl": None,
+        "max_price_brl": None,
+    }
+    payload: list[dict[str, object]] = json.loads(
+        dispatch_tool("search_products", arguments, TODAY).content
+    )
+    assert [summary["product_id"] for summary in payload] == [87]
+    assert (
+        dispatch_tool(
+            "search_products", {**arguments, "name_contains": "Fender Jazz Bass"}, TODAY
+        ).content
+        == "[]"
+    )
+
+
+def test_delivered_order_has_no_pending_estimate() -> None:
+    arguments: dict[str, object] = {
+        "order_id": 4,
+        "customer_email": "lucas.mendes@jmail.com",
+        "customer_phone": None,
+    }
+    payload: dict[str, object] = json.loads(TOOL_HANDLERS["get_order_status"](arguments, TODAY))
+    assert payload["status_label"] == "entregue"
+    assert payload["estimated_delivery_has_passed"] is None
+    assert payload["withdrawal_deadline_label"] == "29/12/2025"
 
 
 def test_get_product_tool() -> None:
@@ -190,9 +221,31 @@ def test_invalid_argument_type_returns_error_payload() -> None:
     assert dispatch_tool("get_product", {"product_id": True}, TODAY).is_error is True
 
 
+def test_wrong_optional_argument_types_return_error_payload() -> None:
+    order_arguments: dict[str, object] = {
+        "order_id": 8,
+        "customer_email": 5,
+        "customer_phone": None,
+    }
+    order_result = dispatch_tool("get_order_status", order_arguments, TODAY)
+    assert order_result.is_error is True
+    assert "customer_email" in order_result.content
+    assert "string or null" in order_result.content
+    search_arguments: dict[str, object] = {
+        "name_contains": None,
+        "category": None,
+        "min_price_brl": None,
+        "max_price_brl": "mil",
+    }
+    search_result = dispatch_tool("search_products", search_arguments, TODAY)
+    assert search_result.is_error is True
+    assert "max_price_brl" in search_result.content
+    assert "number or null" in search_result.content
+
+
 def test_category_outside_enum_is_rejected_before_querying() -> None:
     arguments: dict[str, object] = {
-        "query": None,
+        "name_contains": None,
         "category": "cordas",
         "min_price_brl": None,
         "max_price_brl": None,

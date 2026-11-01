@@ -2,11 +2,12 @@ import csv
 import functools
 import json
 import sqlite3
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict
 
 ProductCategory = Literal[
     "guitarras",
@@ -30,8 +31,7 @@ class Promotion:
     discount_percent: int
 
 
-@dataclass(frozen=True, slots=True)
-class PriceQuote:
+class PriceQuote(TypedDict):
     list_price_brl: Decimal | None
     promotion: Promotion | None
     promotional_price_brl: Decimal | None
@@ -105,8 +105,7 @@ class OrderItem:
     quantity: int
 
 
-@dataclass(frozen=True, slots=True)
-class DeliveryWindows:
+class DeliveryWindows(TypedDict):
     received_on: date | None
     withdrawal_deadline: date | None
     withdrawal_window_open: bool | None
@@ -171,6 +170,10 @@ INSTALLMENT_MINIMUM_BRL: dict[int, Decimal] = {
 }
 WITHDRAWAL_WINDOW_DAYS = 7
 DEFECT_EXCHANGE_WINDOW_DAYS = 30
+SETTLED_ORDER_STATUSES = frozenset({"delivered", "cancelled"})
+SEARCH_STOPWORDS = frozenset({"de", "do", "da", "o", "a", "e", "com", "para"})
+MIN_SEARCH_TOKEN_LENGTH = 2
+PLURAL_SUFFIXES: dict[str, str] = {"oes": "ao", "s": ""}
 
 PIX_NOTE_LIST_PRICE = "Preço à vista no PIX com 5% de desconto."
 PIX_NOTE_PROMOTIONAL = (
@@ -178,17 +181,17 @@ PIX_NOTE_PROMOTIONAL = (
     "à vista no PIX paga o preço promocional."
 )
 INSTALLMENT_NOTE = "sem juros no cartão de crédito"
-NO_PRICE_QUOTE = PriceQuote(
-    list_price_brl=None,
-    promotion=None,
-    promotional_price_brl=None,
-    pix_price_brl=None,
-    pix_note=None,
-    best_cash_price_brl=None,
-    max_installments=None,
-    installment_value_brl=None,
-    installment_note=None,
-)
+NO_PRICE_QUOTE: PriceQuote = {
+    "list_price_brl": None,
+    "promotion": None,
+    "promotional_price_brl": None,
+    "pix_price_brl": None,
+    "pix_note": None,
+    "best_cash_price_brl": None,
+    "max_installments": None,
+    "installment_value_brl": None,
+    "installment_note": None,
+}
 
 CATEGORY_IDS: dict[ProductCategory, int] = {
     "guitarras": 1,
@@ -241,13 +244,13 @@ PAYMENT_METHOD_LABELS: dict[str, str] = {
     "credit_12x": "cartão de crédito em 12x",
     "boleto": "boleto bancário",
 }
-NO_DELIVERY_WINDOWS = DeliveryWindows(
-    received_on=None,
-    withdrawal_deadline=None,
-    withdrawal_window_open=None,
-    defect_exchange_deadline=None,
-    defect_exchange_window_open=None,
-)
+NO_DELIVERY_WINDOWS: DeliveryWindows = {
+    "received_on": None,
+    "withdrawal_deadline": None,
+    "withdrawal_window_open": None,
+    "defect_exchange_deadline": None,
+    "defect_exchange_window_open": None,
+}
 ORDER_NOT_FOUND = OrderLookupFailure(
     found=False,
     reason="not_found",
@@ -292,7 +295,8 @@ CREATE TABLE products (
     stock_quantity INTEGER NOT NULL,
     status TEXT NOT NULL,
     specs TEXT NOT NULL,
-    description TEXT NOT NULL
+    description TEXT NOT NULL,
+    search_text TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE promotions (
     promotion_id INTEGER PRIMARY KEY,
@@ -370,6 +374,14 @@ ORDER_COLUMNS = (
 )
 INSERT_ORDER_ITEM_SQL = "INSERT INTO order_items (order_id, product_id, quantity) VALUES (?, ?, ?)"
 ORDER_ITEM_COLUMNS = ("order_id", "product_id", "quantity")
+POPULATE_SEARCH_TEXT_SQL = """
+UPDATE products
+SET search_text = normalize_search_text(
+    products.name || ' ' || (
+        SELECT categories.name FROM categories WHERE categories.category_id = products.category_id
+    )
+)
+"""
 CSV_TABLES: dict[str, tuple[str, tuple[str, ...]]] = {
     CATEGORIES_CSV: (INSERT_CATEGORY_SQL, CATEGORY_COLUMNS),
     PRODUCTS_CSV: (INSERT_PRODUCT_SQL, PRODUCT_COLUMNS),
@@ -391,15 +403,15 @@ WHERE products.product_id = ?
 SEARCH_PRODUCTS_SQL = """
 SELECT products.product_id, products.name, products.category_id, products.price_cents,
        products.stock_quantity, products.status, products.specs, products.description,
-       promotions.discount_percent, promotions.description AS promotion_name
+       products.search_text, promotions.discount_percent,
+       promotions.description AS promotion_name
 FROM products
 LEFT JOIN promotions
     ON promotions.product_id = products.product_id AND promotions.is_active = 1
-WHERE (? IS NULL OR lower(products.name) LIKE ? OR lower(products.description) LIKE ?)
-  AND (? IS NULL OR products.category_id = ?)
-  AND (? IS NULL OR products.price_cents >= ?)
-  AND (? IS NULL OR products.price_cents <= ?)
-  AND (? IS NOT NULL OR products.status != 'discontinued')
+WHERE (:category_id IS NULL OR products.category_id = :category_id)
+  AND (:min_cents IS NULL OR products.price_cents >= :min_cents)
+  AND (:max_cents IS NULL OR products.price_cents <= :max_cents)
+  AND (:include_discontinued OR products.status != 'discontinued')
 ORDER BY products.price_cents ASC, products.product_id ASC
 """
 ACTIVE_PROMOTIONS_SQL = """
@@ -432,9 +444,27 @@ ORDER BY products.name ASC
 """
 
 
+def singular_word(word: str) -> str:
+    for suffix, replacement in PLURAL_SUFFIXES.items():
+        if word.endswith(suffix) and len(word) > len(suffix) + 1:
+            return word.removesuffix(suffix) + replacement
+    return word
+
+
+def normalize_search_text(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text)
+    stripped = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    return " ".join(singular_word(word) for word in stripped.lower().split())
+
+
 def load_catalog(data_dir: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.row_factory = sqlite3.Row
+    connection.create_function(
+        "normalize_search_text", 1, normalize_search_text, deterministic=True
+    )
     connection.executescript(CREATE_TABLES_SQL)
     for csv_name, (insert_sql, columns) in CSV_TABLES.items():
         with (data_dir / csv_name).open(encoding="utf-8", newline="") as csv_file:
@@ -442,6 +472,7 @@ def load_catalog(data_dir: Path) -> sqlite3.Connection:
             connection.executemany(
                 insert_sql, ([record[column] for column in columns] for record in records)
             )
+    connection.execute(POPULATE_SEARCH_TEXT_SQL)
     connection.commit()
     return connection
 
@@ -484,33 +515,26 @@ def installment_plan(price: Decimal) -> tuple[int, Decimal]:
 
 
 def price_quote(list_price: Decimal, promotion: Promotion | None) -> PriceQuote:
-    if promotion is None:
-        cash_price = pix_price(list_price)
-        max_installments, installment_value = installment_plan(list_price)
-        return PriceQuote(
-            list_price_brl=list_price,
-            promotion=None,
-            promotional_price_brl=None,
-            pix_price_brl=cash_price,
-            pix_note=PIX_NOTE_LIST_PRICE,
-            best_cash_price_brl=cash_price,
-            max_installments=max_installments,
-            installment_value_brl=installment_value,
-            installment_note=INSTALLMENT_NOTE,
-        )
-    cash_price = promotional_price(list_price, promotion.discount_percent)
-    max_installments, installment_value = installment_plan(cash_price)
-    return PriceQuote(
-        list_price_brl=list_price,
-        promotion=promotion,
-        promotional_price_brl=cash_price,
-        pix_price_brl=None,
-        pix_note=PIX_NOTE_PROMOTIONAL,
-        best_cash_price_brl=cash_price,
-        max_installments=max_installments,
-        installment_value_brl=installment_value,
-        installment_note=INSTALLMENT_NOTE,
+    has_promotion = promotion is not None
+    cash_price = (
+        promotional_price(list_price, promotion.discount_percent)
+        if promotion is not None
+        else pix_price(list_price)
     )
+    max_installments, installment_value = installment_plan(
+        cash_price if has_promotion else list_price
+    )
+    return {
+        "list_price_brl": list_price,
+        "promotion": promotion,
+        "promotional_price_brl": cash_price if has_promotion else None,
+        "pix_price_brl": None if has_promotion else cash_price,
+        "pix_note": PIX_NOTE_PROMOTIONAL if has_promotion else PIX_NOTE_LIST_PRICE,
+        "best_cash_price_brl": cash_price,
+        "max_installments": max_installments,
+        "installment_value_brl": installment_value,
+        "installment_note": INSTALLMENT_NOTE,
+    }
 
 
 def availability_of(status: str, stock_quantity: int) -> Availability:
@@ -537,24 +561,33 @@ def price_quote_from_row(row: sqlite3.Row) -> PriceQuote:
 
 def summary_from_row(row: sqlite3.Row) -> ProductSummary:
     quote = price_quote_from_row(row)
+    promotion = quote["promotion"]
     specs = selected_specs(row["specs"])
     return ProductSummary(
         product_id=row["product_id"],
         name=row["name"],
         category=CATEGORY_SLUGS[row["category_id"]],
         availability=availability_of(row["status"], row["stock_quantity"]),
-        list_price_brl=quote.list_price_brl,
-        promotional_price_brl=quote.promotional_price_brl,
-        discount_percent=None if quote.promotion is None else quote.promotion.discount_percent,
+        list_price_brl=quote["list_price_brl"],
+        promotional_price_brl=quote["promotional_price_brl"],
+        discount_percent=None if promotion is None else promotion.discount_percent,
         strings=specs.get("strings"),
         electronics=ELECTRONICS_FLAGS.get(specs.get("electronics", "")),
     )
 
 
-def like_pattern_of(query: str | None) -> str | None:
-    if query is None:
-        return None
-    return "%" + query.strip().lower() + "%"
+def search_tokens(name_contains: str) -> list[str]:
+    return [
+        token
+        for token in normalize_search_text(name_contains).split()
+        if len(token) >= MIN_SEARCH_TOKEN_LENGTH and token not in SEARCH_STOPWORDS
+    ]
+
+
+def matches_every_token(search_text: str, tokens: list[str] | None) -> bool:
+    if tokens is None:
+        return True
+    return bool(tokens) and all(token in search_text for token in tokens)
 
 
 def category_id_of(category: ProductCategory | None) -> int | None:
@@ -564,32 +597,22 @@ def category_id_of(category: ProductCategory | None) -> int | None:
 
 
 def search_products(
-    query: str | None,
+    name_contains: str | None,
     category: ProductCategory | None,
     min_price_brl: Decimal | None,
     max_price_brl: Decimal | None,
 ) -> list[ProductSummary]:
-    search_filters = (query, category, min_price_brl, max_price_brl)
-    if all(search_filter is None for search_filter in search_filters):
-        return []
-    like_pattern = like_pattern_of(query)
-    category_id = category_id_of(category)
-    min_cents = cents_from_brl(min_price_brl)
-    max_cents = cents_from_brl(max_price_brl)
-    parameters = (
-        like_pattern,
-        like_pattern,
-        like_pattern,
-        category_id,
-        category_id,
-        min_cents,
-        min_cents,
-        max_cents,
-        max_cents,
-        like_pattern,
-    )
+    tokens = None if name_contains is None else search_tokens(name_contains)
+    parameters = {
+        "category_id": category_id_of(category),
+        "min_cents": cents_from_brl(min_price_brl),
+        "max_cents": cents_from_brl(max_price_brl),
+        "include_discontinued": tokens is not None,
+    }
     rows = catalog_connection().execute(SEARCH_PRODUCTS_SQL, parameters).fetchall()
-    return [summary_from_row(row) for row in rows]
+    return [
+        summary_from_row(row) for row in rows if matches_every_token(row["search_text"], tokens)
+    ]
 
 
 def get_product(product_id: int) -> ProductDetail | None:
@@ -597,7 +620,6 @@ def get_product(product_id: int) -> ProductDetail | None:
     if row is None:
         return None
     summary = summary_from_row(row)
-    quote = price_quote_from_row(row)
     return ProductDetail(
         product_id=summary.product_id,
         name=summary.name,
@@ -605,15 +627,7 @@ def get_product(product_id: int) -> ProductDetail | None:
         availability=summary.availability,
         description=row["description"],
         specs=selected_specs(row["specs"]),
-        list_price_brl=quote.list_price_brl,
-        promotion=quote.promotion,
-        promotional_price_brl=quote.promotional_price_brl,
-        pix_price_brl=quote.pix_price_brl,
-        pix_note=quote.pix_note,
-        best_cash_price_brl=quote.best_cash_price_brl,
-        max_installments=quote.max_installments,
-        installment_value_brl=quote.installment_value_brl,
-        installment_note=quote.installment_note,
+        **price_quote_from_row(row),
     )
 
 
@@ -678,13 +692,13 @@ def delivery_windows(row: sqlite3.Row, today: date) -> DeliveryWindows:
     withdrawal_deadline = received_on + timedelta(days=WITHDRAWAL_WINDOW_DAYS)
     order_date = date.fromisoformat(row["order_date"])
     defect_exchange_deadline = order_date + timedelta(days=DEFECT_EXCHANGE_WINDOW_DAYS)
-    return DeliveryWindows(
-        received_on=received_on,
-        withdrawal_deadline=withdrawal_deadline,
-        withdrawal_window_open=today <= withdrawal_deadline,
-        defect_exchange_deadline=defect_exchange_deadline,
-        defect_exchange_window_open=today <= defect_exchange_deadline,
-    )
+    return {
+        "received_on": received_on,
+        "withdrawal_deadline": withdrawal_deadline,
+        "withdrawal_window_open": today <= withdrawal_deadline,
+        "defect_exchange_deadline": defect_exchange_deadline,
+        "defect_exchange_window_open": today <= defect_exchange_deadline,
+    }
 
 
 def order_items_of(order_id: int) -> tuple[OrderItem, ...]:
@@ -694,10 +708,14 @@ def order_items_of(order_id: int) -> tuple[OrderItem, ...]:
     )
 
 
+def estimate_has_passed(row: sqlite3.Row, today: date) -> bool | None:
+    if row["status"] in SETTLED_ORDER_STATUSES:
+        return None
+    return has_passed(optional_date(row["estimated_delivery"]), today)
+
+
 def order_detail_from_row(row: sqlite3.Row, today: date) -> OrderDetail:
     status: OrderStatus = row["status"]
-    estimated_delivery = optional_date(row["estimated_delivery"])
-    windows = delivery_windows(row, today)
     return OrderDetail(
         found=True,
         order_id=row["order_id"],
@@ -710,14 +728,10 @@ def order_detail_from_row(row: sqlite3.Row, today: date) -> OrderDetail:
         items=order_items_of(row["order_id"]),
         delivery_city=row["delivery_city"],
         tracking_code=row["tracking_code"],
-        estimated_delivery=estimated_delivery,
-        estimated_delivery_has_passed=has_passed(estimated_delivery, today),
+        estimated_delivery=optional_date(row["estimated_delivery"]),
+        estimated_delivery_has_passed=estimate_has_passed(row, today),
         cancellation_reason=row["notes"] if status == "cancelled" else None,
-        received_on=windows.received_on,
-        withdrawal_deadline=windows.withdrawal_deadline,
-        withdrawal_window_open=windows.withdrawal_window_open,
-        defect_exchange_deadline=windows.defect_exchange_deadline,
-        defect_exchange_window_open=windows.defect_exchange_window_open,
+        **delivery_windows(row, today),
     )
 
 

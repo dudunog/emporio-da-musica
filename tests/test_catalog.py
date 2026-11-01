@@ -61,8 +61,10 @@ def test_search_min_above_max_returns_empty_list() -> None:
     assert search_products(None, "violoes", Decimal("2000"), Decimal("1000")) == []
 
 
-def test_search_without_filters_returns_empty_list() -> None:
-    assert search_products(None, None, None, None) == []
+def test_search_without_filters_returns_every_product_except_discontinued() -> None:
+    summaries = search_products(None, None, None, None)
+    assert len(summaries) == 63
+    assert all(summary.availability != "discontinued" for summary in summaries)
 
 
 def test_search_query_matches_name_case_insensitively() -> None:
@@ -70,6 +72,29 @@ def test_search_query_matches_name_case_insensitively() -> None:
     assert [summary.product_id for summary in summaries] == [95]
     assert summaries[0].strings == "steel"
     assert summaries[0].electronics is False
+
+
+def test_search_matches_every_token_ignoring_accents_order_and_stopwords() -> None:
+    assert [
+        summary.product_id for summary in search_products("Yamaha F310 violão", None, None, None)
+    ] == [87]
+    yamaha_violoes = search_products("violão Yamaha", None, None, None)
+    assert {summary.product_id for summary in yamaha_violoes} == {81, 82, 87, 92, 98, 104, 114}
+    seven_strings = search_products("Shelby SN-7C de 7 cordas", None, None, None)
+    assert [summary.product_id for summary in seven_strings] == [113]
+    violoes = search_products("violao", None, None, None)
+    assert len(violoes) == 35
+    assert all(summary.category == "violoes" for summary in violoes)
+    assert search_products("Fender Jazz Bass", None, None, None) == []
+    assert search_products("Fender", None, None, None) != []
+
+
+def test_search_treats_like_wildcards_as_literal_characters() -> None:
+    assert search_products("%", None, None, None) == []
+    assert search_products("_", None, None, None) == []
+    assert search_products("%%", None, None, None) == []
+    assert search_products("F3_0", None, None, None) == []
+    assert search_products("de", None, None, None) == []
 
 
 def test_search_query_includes_discontinued_without_price() -> None:
@@ -93,7 +118,7 @@ def test_search_by_category_excludes_discontinued_but_marks_coming_soon() -> Non
 def test_search_products_rejects_sql_in_arguments() -> None:
     assert search_products(SQL_INJECTION_QUERY, None, None, None) == []
     arguments: dict[str, object] = {
-        "query": None,
+        "name_contains": None,
         "category": SQL_INJECTION_QUERY,
         "min_price_brl": None,
         "max_price_brl": None,

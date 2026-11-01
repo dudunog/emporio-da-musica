@@ -130,6 +130,8 @@ def test_delivered_order_windows_closed_today() -> None:
     order = found_order(4, LUCAS_EMAIL, None)
     assert order.status_label == "entregue"
     assert order.received_on == date(2025, 12, 22)
+    assert order.estimated_delivery == date(2025, 12, 22)
+    assert order.estimated_delivery_has_passed is None
     assert order.withdrawal_deadline == date(2025, 12, 29)
     assert order.withdrawal_window_open is False
     assert order.defect_exchange_deadline == date(2026, 1, 9)

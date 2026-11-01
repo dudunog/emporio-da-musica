@@ -33,24 +33,38 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
     {
         "name": SEARCH_PRODUCTS_TOOL,
         "description": (
-            "Search the catalog by free-text query (matched against product name and "
-            "description), category and/or price range in BRL; at least one filter is required. "
-            "Returns products ordered by price with availability and prices already formatted. "
-            "With a query, discontinued and coming-soon products are included so their status "
-            "can be explained; with category or price only, discontinued products are omitted."
+            "Search the catalog by product name, category and/or list-price range in BRL; at "
+            "least one filter is required, and the product_id used by get_product comes from "
+            "these results. name_contains is matched word by word, ignoring accents and case, "
+            "against the product name plus its category name, so pass only the brand and the "
+            "model code ('Takamine GD20', 'F310'), never a whole sentence; when it returns "
+            "nothing, retry with fewer words before concluding the product does not exist. "
+            "Each result already carries availability, list price, promotional price, discount "
+            "percent and string type, enough for a plain price, stock or options question. With "
+            "name_contains, discontinued and coming-soon products are included so their status "
+            "can be explained; with category or price only, discontinued products are omitted "
+            "but out-of-stock ones still appear marked."
         ),
         "strict": True,
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {
+                "name_contains": {
                     **OPTIONAL_STRING_SCHEMA,
-                    "description": "Words from the product name or model, e.g. 'Takamine GD20'.",
+                    "description": (
+                        "Brand and model code from the product name, such as 'Takamine GD20' "
+                        "or 'SN-7C'; no sentences and no generic words."
+                    ),
                 },
                 "category": {
                     "type": ["string", "null"],
                     "enum": [*CATEGORY_IDS, None],
-                    "description": "Catalog category slug.",
+                    "description": (
+                        "Catalog category slug: violões = violoes, ukuleles, guitarras, baixos, "
+                        "teclados e pianos = teclados_pianos, baterias e percussão = "
+                        "baterias_percussao, sopro de madeira = sopro_madeiras, sopro de metal = "
+                        "sopro_metais, cordas orquestrais = cordas_orquestrais."
+                    ),
                 },
                 "min_price_brl": {
                     **OPTIONAL_NUMBER_SCHEMA,
@@ -61,17 +75,20 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
                     "description": "Maximum list price in BRL, inclusive.",
                 },
             },
-            "required": ["query", "category", "min_price_brl", "max_price_brl"],
+            "required": ["name_contains", "category", "min_price_brl", "max_price_brl"],
             "additionalProperties": False,
         },
     },
     {
         "name": GET_PRODUCT_TOOL,
         "description": (
-            "Return the full details of one product by product_id: description, specs, "
-            "availability, list price, active promotion, PIX price, best cash price and "
-            "installment plan, all amounts already formatted in BRL. Use it before quoting any "
-            "price, stock status or installment. Returns null when the product_id does not exist."
+            "Return the full details of one product by product_id, taken from a search_products "
+            "result: description, selected specs, availability, list price, active promotion, "
+            "PIX price with its note, best cash price and installment plan, all amounts already "
+            "formatted in BRL. Call it when the customer asks for PIX price, installments, "
+            "promotion details, description or specs; a plain price or stock question is already "
+            "answered by search_products. Discontinued products come without prices. Returns "
+            "null when the product_id does not exist."
         ),
         "strict": True,
         "input_schema": {
@@ -86,10 +103,17 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
     {
         "name": GET_ORDER_STATUS_TOOL,
         "description": (
-            "Look up one order by order_id plus the customer's registered e-mail or phone "
-            "(at least one is required). Returns status, items, total paid, tracking data and, "
-            "for delivered orders, the withdrawal and defect-exchange deadlines computed for "
-            "today. When found is false, relay the message without saying which field failed."
+            "Look up one order by order_id plus the customer's registered e-mail or phone; call "
+            "it only after the customer gave the order number and at least one of the two "
+            "contacts. Returns status_label and payment_method_label in Portuguese, items, total "
+            "paid, tracking_code, estimated_delivery with estimated_delivery_has_passed (null "
+            "once delivered or cancelled) and, for delivered orders, the withdrawal and "
+            "defect-exchange deadlines with whether each window is still open, all computed for "
+            "today; every date also comes as a *_label field in dd/mm/yyyy, which is the form to "
+            "quote. When found is false, reason is not_found (order number or contact do not "
+            "match: ask the customer to check both, never say which one failed) or "
+            "ambiguous_contact (the e-mail belongs to more than one customer: ask for the "
+            "registered phone and call again with it)."
         ),
         "strict": True,
         "input_schema": {
@@ -127,7 +151,9 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
     {
         "name": GET_STORE_INFO_TOOL,
         "description": (
-            "Return the store's address, phone, WhatsApp, e-mail, opening hours and company data."
+            "Return the store's address, landline phone, WhatsApp, e-mail, opening hours per day "
+            "and company data. Use it for address, contact and hours questions and whenever the "
+            "customer asks to talk to a person."
         ),
         "strict": True,
         "input_schema": {
@@ -141,8 +167,10 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
         "name": GET_POLICY_TOOL,
         "description": (
             "Return one section of the store policy manual by topic. Use it for questions about "
-            "opening hours, payment and installments, exchanges and returns, shipping, promotion "
-            "rules, customer service, warranty or privacy, and answer only the relevant part."
+            "payment and installments, exchanges and returns, shipping, promotion rules, customer "
+            "service, warranty or privacy, and answer only the relevant part. A defect or "
+            "warranty question may need both exchanges_returns and warranty; regular opening "
+            "hours come from get_store_info."
         ),
         "strict": True,
         "input_schema": {
@@ -238,14 +266,16 @@ def dump_json(payload: object) -> str:
 
 
 def run_search_products(arguments: dict[str, object], _today: date) -> str:
-    query = optional_string(arguments, "query")
+    name_contains = optional_string(arguments, "name_contains")
     category = optional_choice(arguments, "category", CATEGORY_IDS)
     min_price_brl = optional_decimal(arguments, "min_price_brl")
     max_price_brl = optional_decimal(arguments, "max_price_brl")
-    search_filters = (query, category, min_price_brl, max_price_brl)
+    search_filters = (name_contains, category, min_price_brl, max_price_brl)
     if all(search_filter is None for search_filter in search_filters):
-        raise ValueError("search_products requires at least one filter (query, category or price).")
-    summaries = search_products(query, category, min_price_brl, max_price_brl)
+        raise ValueError(
+            "search_products requires at least one filter (name_contains, category or price)."
+        )
+    summaries = search_products(name_contains, category, min_price_brl, max_price_brl)
     return dump_json([serialize_payload(asdict(summary)) for summary in summaries])
 
 
