@@ -13,9 +13,11 @@ from emporio_agent.catalog import (
     list_active_promotions,
     search_products,
 )
+from emporio_agent.tools import dispatch_tool
 
 TODAY = date(2026, 11, 1)
 CONTACT_FIELDS = {"phone", "email", "customer_id", "city", "address", "customer_email"}
+SQL_INJECTION_QUERY = "Violões'; DROP TABLE products; --"
 
 
 def test_connection_is_created_once() -> None:
@@ -86,6 +88,20 @@ def test_search_by_category_excludes_discontinued_but_marks_coming_soon() -> Non
     bass_ids = [summary.product_id for summary in search_products(None, "baixos", None, None)]
     assert 136 not in bass_ids
     assert bass_ids == [138, 135, 137]
+
+
+def test_search_products_rejects_sql_in_arguments() -> None:
+    assert search_products(SQL_INJECTION_QUERY, None, None, None) == []
+    arguments: dict[str, object] = {
+        "query": None,
+        "category": SQL_INJECTION_QUERY,
+        "min_price_brl": None,
+        "max_price_brl": None,
+    }
+    tool_result = dispatch_tool("search_products", arguments, TODAY)
+    assert tool_result.is_error is True
+    assert "category" in tool_result.content
+    assert catalog_connection().execute("SELECT count(*) FROM products").fetchone()[0] == 65
 
 
 def test_list_active_promotions_returns_exactly_the_four_active() -> None:
@@ -189,3 +205,17 @@ def test_order_status_hides_customer_contact() -> None:
     assert not CONTACT_FIELDS & set(payload)
     assert payload["delivery_city"] == "Campo Grande"
     assert payload["customer_first_name"] == "Ana"
+
+
+def test_sql_injection_strings_leave_tables_intact() -> None:
+    assert get_order_status(8, "' OR 1=1 --", None, TODAY) == get_order_status(
+        999, "nobody@example.com", None, TODAY
+    )
+    arguments: dict[str, object] = {
+        "order_id": "8; DROP TABLE orders",
+        "customer_email": "x",
+        "customer_phone": None,
+    }
+    assert dispatch_tool("get_order_status", arguments, TODAY).is_error is True
+    assert catalog_connection().execute("SELECT count(*) FROM orders").fetchone()[0] == 20
+    assert catalog_connection().execute("SELECT count(*) FROM products").fetchone()[0] == 65
