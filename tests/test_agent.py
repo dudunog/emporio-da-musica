@@ -1,5 +1,6 @@
 import copy
 import re
+import unicodedata
 from datetime import date
 from pathlib import Path
 
@@ -41,6 +42,62 @@ GREETING_HISTORY: list[MessageParam] = [
     {"role": "user", "content": "Oi"},
     {"role": "assistant", "content": "Oi! Eu sou a Lia, atendimento virtual da Empório da Música."},
 ]
+
+
+FALLBACK_TEXTS = {
+    "TOO_MANY_TOOL_ROUNDS_FALLBACK": TOO_MANY_TOOL_ROUNDS_FALLBACK,
+    "REFUSAL_FALLBACK": REFUSAL_FALLBACK,
+    "TRUNCATED_REPLY_FALLBACK": TRUNCATED_REPLY_FALLBACK,
+    "CONTEXT_WINDOW_FALLBACK": CONTEXT_WINDOW_FALLBACK,
+    "EMPTY_REPLY_FALLBACK": EMPTY_REPLY_FALLBACK,
+}
+FORBIDDEN_TERMS = (
+    "API",
+    "LLM",
+    "token",
+    "sessão",
+    "session",
+    "rerun",
+    "deploy",
+    "prompt",
+    "modelo",
+    "Streamlit",
+    "Anthropic",
+    "Claude",
+    "chat",
+    "bot",
+    "online",
+    "offline",
+    "retry",
+    "loading",
+    "error",
+    "erro 4",
+    "erro 5",
+    "timeout",
+    "status code",
+    "chave",
+    "key",
+    ".env",
+    "ANTHROPIC_API_KEY",
+    "Enter",
+    "ok",
+    "ops",
+)
+ACCENTED_WORDS = (
+    "Empório",
+    "Música",
+    "começa",
+    "está",
+    "não",
+    "disponível",
+    "informações",
+    "preços",
+    "página",
+    "específico",
+)
+FORBIDDEN_TYPOGRAPHY = re.compile(
+    r"[\u2014\u2013\u201c\u201d\u2018\u2019\u2026]|[\U0001f300-\U0001faff\U00002600-\U000027bf]"
+)
 
 
 class ScriptedClient:
@@ -433,3 +490,35 @@ def test_create_client_loads_dotenv_from_repository_root(
 
     assert client.api_key == "key-from-dotenv"
     assert agent.DOTENV_PATH.name == dotenv_path.name
+
+
+def strip_accents(word: str) -> str:
+    decomposed = unicodedata.normalize("NFD", word)
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def whole_word(term: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<!\w){re.escape(term)}(?!\w)", re.IGNORECASE)
+
+
+@pytest.mark.parametrize("term", FORBIDDEN_TERMS)
+def test_fallbacks_avoid_forbidden_terms(term: str) -> None:
+    pattern = whole_word(term)
+    offenders = {name: text for name, text in FALLBACK_TEXTS.items() if pattern.search(text)}
+    assert offenders == {}
+
+
+@pytest.mark.parametrize("word", ACCENTED_WORDS)
+def test_fallbacks_keep_accents(word: str) -> None:
+    pattern = whole_word(strip_accents(word))
+    offenders = {name: text for name, text in FALLBACK_TEXTS.items() if pattern.search(text)}
+    assert offenders == {}
+
+
+def test_fallbacks_use_plain_typography_without_exclamation() -> None:
+    offenders = {
+        name: text
+        for name, text in FALLBACK_TEXTS.items()
+        if FORBIDDEN_TYPOGRAPHY.search(text) or "!" in text
+    }
+    assert offenders == {}
