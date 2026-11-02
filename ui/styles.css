@@ -77,7 +77,7 @@ main.stMain:focus-visible::before { top: var(--header-height); height: calc(100v
   padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
 }
 
-/* Dialogo de conexao: fora de .stApp (sem tokens). So o titulo, em pt-BR via focus.js, sem corpo nem botoes nativos */
+/* Dialogo de conexao: fora de .stApp (sem tokens). So o titulo, em pt-BR via chat-behavior.js, sem corpo nem botoes nativos */
 [data-testid="stDialog"] { align-items: center; background: rgb(0 0 0 / 0.4); }
 [data-testid="stDialog"] > div { border-radius: 18px; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); box-shadow: none; }
 [data-testid="stDialog"] button,

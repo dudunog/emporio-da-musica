@@ -145,7 +145,7 @@ Para a tela não parecer Streamlit:
 - `.streamlit/config.toml` define temas claro e escuro com a paleta âmbar, fonte Inter, raios próprios, `toolbarMode = "minimal"` e `showErrorDetails = "none"`.
 - `ui/styles.css` esconde cabeçalho, menu, botão de deploy e indicador de execução, e redesenha bolhas e composer.
 - `app.py` usa `st.html` para cabeçalho com avatar, bolha do cliente, indicador de digitação e bolha de erro, sem título, spinner ou barra lateral do Streamlit. O texto do cliente é escapado com `html.escape` e aparece sempre literal.
-- `ui/focus.js` define `lang="pt-BR"`, devolve o foco ao campo depois de cada resposta e, com um `MutationObserver`, mantém em português o nome acessível do botão de envio, o link de pular conteúdo e o diálogo nativo de queda de conexão. O script também impede o diálogo de fechar com Esc ou clique fora, rola a conversa até o fim quando o cliente envia uma mensagem, sem puxar a tela de quem voltou a ler acima, e mantém o botão "Tentar de novo" acima do composer quando o erro surge e quando o campo cresce.
+- `ui/chat-behavior.js` define `lang="pt-BR"` e, com um `MutationObserver`, mantém em português o nome acessível do botão de envio, o link de pular conteúdo e o diálogo nativo de queda de conexão. O script devolve o foco ao campo quando ele volta a ficar utilizável e no clique em "Tentar de novo", sem mexer na rolagem, e impede o diálogo de fechar com Esc ou clique fora. A conversa rola até o fim quando o cliente envia uma mensagem ou quando o botão "Tentar de novo" surge, sem puxar a tela de quem voltou a ler acima, nem na volta da conexão, e o botão fica acima do composer quando o campo cresce.
 - `as_markdown` em `app.py`, usado só nas respostas da Lia, escapa `$` para o Streamlit não ler preços como LaTeX e usa espaço inquebrável entre `R$` e o valor.
 
 ### Histórico na sessão
@@ -245,7 +245,7 @@ A tabela diz o que cada cenário verifica, sem resultado individual. Resultado d
 | Limite fixo de saída | `MAX_OUTPUT_TOKENS = 1024` inclui o raciocínio. Se estourar, o cliente vê "Essa resposta ficou longa demais" e precisa perguntar de novo | Medir o consumo real por tipo de resposta e ajustar o limite |
 | Sem métricas de uso | O log registra só nome da ferramenta e erro. Custo e latência por conversa são desconhecidos | Registrar `usage` e tempo por turno, sem dados pessoais |
 | Sem avaliação do modelo em CI | Regressão de prompt só aparece para quem roda `uv run pytest -m live` à mão, com chave | Rodar a suíte ao vivo em CI a cada mudança de prompt, com orçamento definido |
-| Strings fixas do Streamlit | Leitor de tela anuncia "Chat message from user" e "Chat message from assistant" em inglês em cada bolha, porque não há parâmetro para trocar. Com a conexão bloqueada desde a carga, a tela fica em branco, sem diálogo, com o título "Streamlit" na aba, porque o script do app ainda não rodou | Estender `ui/focus.js`, que já traduz o botão de envio, o link de pular conteúdo e o diálogo de conexão, às bolhas. A tela em branco vem do HTML inicial do Streamlit, fora do alcance desse script |
+| Strings fixas do Streamlit | Leitor de tela anuncia "Chat message from user" e "Chat message from assistant" em inglês em cada bolha, porque não há parâmetro para trocar. Com a conexão bloqueada desde a carga, a tela fica em branco, sem diálogo, com o título "Streamlit" na aba, porque o script do app ainda não rodou | Estender `ui/chat-behavior.js`, que já traduz o botão de envio, o link de pular conteúdo e o diálogo de conexão, às bolhas. A tela em branco vem do HTML inicial do Streamlit, fora do alcance desse script |
 | Dependência de seletores da versão 1.66.1 | `ui/styles.css` depende de `data-testid`, do div interno sem identificador do composer e da caixa anônima do diálogo de conexão. Por isso `pyproject.toml` fixa `streamlit==1.66.1`, e atualizar o Streamlit pode quebrar o layout sem erro | Comparar screenshots em CI a cada atualização |
 | Flash branco no primeiro carregamento no escuro | O tema e `ui/styles.css` chegam depois da primeira pintura. Em localhost, 2 de 3 cargas mostraram branco, por 83 e 183 ms; com 300 ms de latência e 200 KB/s, o branco durou cerca de 12 s | Investigar como servir a cor de fundo já no HTML inicial |
 
@@ -276,7 +276,7 @@ O histórico local foi reorganizado antes do primeiro push para corrigir mensage
 
 Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e agente falso na interface. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
 
-Rodadas de validação até agora, todas sem chave: dados, ferramentas e agente com 4; interface com 4. As correções finais de rolagem e foco vieram depois da quarta rodada da interface e ficam com os validadores seguintes.
+Rodadas de validação até agora, todas sem chave: dados, ferramentas e agente com 4; interface com 5. A simplificação de `ui/chat-behavior.js` e a correção da rolagem na volta da conexão vieram depois da quinta rodada da interface: foram medidas só por quem as fez e ficam com os validadores seguintes.
 
 As correções feitas depois da quarta rodada de dados, ferramentas e agente ainda não passaram por novo validador isolado.
 

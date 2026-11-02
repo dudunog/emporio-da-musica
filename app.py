@@ -45,13 +45,12 @@ UNAVAILABLE_LOG_HINTS: dict[UnavailableReason, str] = {
 
 APP_DIR = Path(__file__).parent
 STYLES_PATH = APP_DIR / "ui" / "styles.css"
-FOCUS_SCRIPT_PATH = APP_DIR / "ui" / "focus.js"
+CHAT_BEHAVIOR_SCRIPT_PATH = APP_DIR / "ui" / "chat-behavior.js"
 AVATAR_PATH = APP_DIR / "ui" / "avatar.svg"
 AVATARS: dict[str, str | None] = {"assistant": str(AVATAR_PATH), "user": None}
 HISTORY_KEY = "history"
 TRANSCRIPT_KEY = "transcript"
 PENDING_MESSAGE_KEY = "pending_message"
-RUN_COUNTER_KEY = "run_counter"
 RETRY_CONTAINER_KEY = "resend"
 RETRY_BUTTON_KEY = "resend_button"
 HEADER_TEMPLATE = (
@@ -72,7 +71,6 @@ CUSTOMER_TEXT_TEMPLATE = '<p class="customer-text">{text}</p>'
 ERROR_BUBBLE_TEMPLATE = (
     '<div class="error-bubble" role="alert"><span class="error-icon"></span><p>{text}</p></div>'
 )
-RUN_NONCE_MARKER = "__RUN_NONCE__"
 SEND_BUTTON_LABEL_MARKER = "__SEND_BUTTON_LABEL__"
 SKIP_LINK_LABEL_MARKER = "__SKIP_LINK_LABEL__"
 CONNECTION_LOST_LABEL_MARKER = "__CONNECTION_LOST_LABEL__"
@@ -105,12 +103,6 @@ def conversation_transcript() -> list[Bubble]:
     return transcript
 
 
-def next_run_nonce() -> int:
-    run_count: int = st.session_state.get(RUN_COUNTER_KEY, 0)
-    st.session_state[RUN_COUNTER_KEY] = run_count + 1
-    return run_count + 1
-
-
 def ensure_conversation() -> None:
     if HISTORY_KEY in st.session_state:
         return
@@ -136,14 +128,13 @@ def render_header() -> None:
     )
 
 
-def focus_composer() -> None:
+def install_chat_behavior() -> None:
     substitutions = {
-        RUN_NONCE_MARKER: str(next_run_nonce()),
         SEND_BUTTON_LABEL_MARKER: SEND_BUTTON_LABEL,
         SKIP_LINK_LABEL_MARKER: SKIP_LINK_LABEL,
         CONNECTION_LOST_LABEL_MARKER: ERROR_MESSAGES["connection"],
     }
-    script = FOCUS_SCRIPT_PATH.read_text(encoding="utf-8")
+    script = CHAT_BEHAVIOR_SCRIPT_PATH.read_text(encoding="utf-8")
     for marker, value in substitutions.items():
         script = script.replace(marker, value)
     st.html(f"<script>{script}</script>", unsafe_allow_javascript=True)
@@ -275,7 +266,7 @@ def main() -> None:
     if pending_message is not None:
         answer(pending_message)
         finish_pending_message()
-    focus_composer()
+    install_chat_behavior()
 
 
 main()
