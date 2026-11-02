@@ -27,6 +27,8 @@ MODEL_ENVIRONMENT_VARIABLE = "ANTHROPIC_MODEL"
 API_KEY_ENVIRONMENT_VARIABLE = "ANTHROPIC_API_KEY"
 MAX_TOOL_ROUNDS = 8
 MAX_OUTPUT_TOKENS = 1024
+REQUEST_TIMEOUT_SECONDS = 60.0
+MAX_REQUEST_RETRIES = 1
 OUTPUT_CONFIG: OutputConfigParam = {"effort": "low"}
 SYSTEM_PROMPT_PATH = Path(__file__).parent / "system-prompt.md"
 DOTENV_PATH = Path(__file__).parent.parent / ".env"
@@ -128,7 +130,9 @@ def create_client() -> anthropic.Anthropic:
     if not api_key:
         LOGGER.error("%s is not set", API_KEY_ENVIRONMENT_VARIABLE)
         raise AgentUnavailableError("authentication")
-    return anthropic.Anthropic(api_key=api_key)
+    return anthropic.Anthropic(
+        api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS, max_retries=MAX_REQUEST_RETRIES
+    )
 
 
 def today_section(today: date) -> str:

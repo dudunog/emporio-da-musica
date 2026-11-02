@@ -16,8 +16,10 @@ from emporio_agent.agent import (
     GREETING,
     GREETING_PLACEHOLDER,
     MAX_OUTPUT_TOKENS,
+    MAX_REQUEST_RETRIES,
     MAX_TOOL_ROUNDS,
     REFUSAL_FALLBACK,
+    REQUEST_TIMEOUT_SECONDS,
     SYSTEM_PROMPT,
     SYSTEM_PROMPT_PATH,
     TOO_MANY_TOOL_ROUNDS_FALLBACK,
@@ -326,6 +328,15 @@ def test_api_error_log_has_no_provider_body_nor_traceback(
     assert all(record.exc_info is None for record in caplog.records)
 
 
+def test_request_timeout_becomes_connection_reason() -> None:
+    client = ScriptedClient([anthropic.APITimeoutError(request=REQUEST)])
+
+    with pytest.raises(AgentUnavailableError) as raised:
+        reply(client, [], "Oi", TODAY)
+
+    assert raised.value.reason == "connection"
+
+
 def test_history_is_not_mutated_on_failure() -> None:
     client = ScriptedClient([anthropic.APIConnectionError(request=REQUEST)])
     history = copy.deepcopy(GREETING_HISTORY)
@@ -395,6 +406,20 @@ def test_create_client_requires_api_key(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     assert isinstance(create_client(), anthropic.Anthropic)
+
+
+def test_create_client_limits_time_and_retries_below_the_web_proxy_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(agent, "DOTENV_PATH", tmp_path / ".env")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    client = create_client()
+
+    assert REQUEST_TIMEOUT_SECONDS == 60
+    assert MAX_REQUEST_RETRIES == 1
+    assert client.timeout == REQUEST_TIMEOUT_SECONDS
+    assert client.max_retries == MAX_REQUEST_RETRIES
 
 
 def test_create_client_loads_dotenv_from_repository_root(
