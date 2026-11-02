@@ -1,6 +1,6 @@
 import base64
+import html
 import logging
-import re
 from datetime import date
 from pathlib import Path
 from typing import Literal, TypedDict
@@ -69,21 +69,18 @@ TYPING_INDICATOR_TEMPLATE = (
     '<span class="typing-label">{label}</span>'
     "</div>"
 )
+CUSTOMER_TEXT_TEMPLATE = '<p class="customer-text">{text}</p>'
 ERROR_BUBBLE_TEMPLATE = (
     '<div class="error-bubble" role="alert"><span class="error-icon"></span><p>{text}</p></div>'
 )
 RUN_NONCE_MARKER = "__RUN_NONCE__"
 SEND_BUTTON_LABEL_MARKER = "__SEND_BUTTON_LABEL__"
 SKIP_LINK_LABEL_MARKER = "__SKIP_LINK_LABEL__"
+CONNECTION_LOST_LABEL_MARKER = "__CONNECTION_LOST_LABEL__"
 MARKDOWN_DOLLAR = "$"
 MARKDOWN_DOLLAR_ESCAPED = "\\$"
 CURRENCY_PREFIX_WITH_SPACE = "R$ "
 CURRENCY_PREFIX_NO_BREAK = "R$\u00a0"
-MARKDOWN_ESCAPES = (
-    (re.compile(r"([\\*_#`\[\]<>~])"), r"\\\1"),
-    (re.compile(r"^(\s*)([-+=])", re.MULTILINE), r"\1\\\2"),
-    (re.compile(r"^(\s*\d+)([.)])(?=\s)", re.MULTILINE), r"\1\\\2"),
-)
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -145,6 +142,7 @@ def focus_composer() -> None:
         RUN_NONCE_MARKER: str(next_run_nonce()),
         SEND_BUTTON_LABEL_MARKER: SEND_BUTTON_LABEL,
         SKIP_LINK_LABEL_MARKER: SKIP_LINK_LABEL,
+        CONNECTION_LOST_LABEL_MARKER: ERROR_MESSAGES["connection"],
     }
     script = FOCUS_SCRIPT_PATH.read_text(encoding="utf-8")
     for marker, value in substitutions.items():
@@ -152,19 +150,23 @@ def focus_composer() -> None:
     st.html(f"<script>{script}</script>", unsafe_allow_javascript=True)
 
 
+def with_unbreakable_currency(text: str) -> str:
+    return text.replace(CURRENCY_PREFIX_WITH_SPACE, CURRENCY_PREFIX_NO_BREAK)
+
+
 def as_markdown(text: str) -> str:
-    unbreakable = text.replace(CURRENCY_PREFIX_WITH_SPACE, CURRENCY_PREFIX_NO_BREAK)
-    return unbreakable.replace(MARKDOWN_DOLLAR, MARKDOWN_DOLLAR_ESCAPED)
+    return with_unbreakable_currency(text).replace(MARKDOWN_DOLLAR, MARKDOWN_DOLLAR_ESCAPED)
 
 
-def as_literal_markdown(text: str) -> str:
-    escaped = text
-    for pattern, replacement in MARKDOWN_ESCAPES:
-        escaped = pattern.sub(replacement, escaped)
-    return escaped.replace(MARKDOWN_DOLLAR, MARKDOWN_DOLLAR_ESCAPED)
+def render_customer_text(text: str) -> None:
+    st.html(CUSTOMER_TEXT_TEMPLATE.format(text=html.escape(with_unbreakable_currency(text))))
 
 
-BUBBLE_RENDERERS = {"user": as_literal_markdown, "assistant": as_markdown}
+def render_assistant_text(text: str) -> None:
+    st.markdown(as_markdown(text))
+
+
+BUBBLE_RENDERERS = {"user": render_customer_text, "assistant": render_assistant_text}
 
 
 def request_retry() -> None:
@@ -188,7 +190,7 @@ def render_bubble(bubble: Bubble, show_retry: bool) -> None:
         if bubble["kind"] == "error":
             render_error_bubble(bubble["text"], show_retry)
             return
-        st.markdown(BUBBLE_RENDERERS[bubble["role"]](bubble["text"]))
+        BUBBLE_RENDERERS[bubble["role"]](bubble["text"])
 
 
 def render_transcript() -> None:
@@ -199,12 +201,18 @@ def render_transcript() -> None:
 
 
 def take_pending_message() -> str | None:
-    prompt = st.chat_input(placeholder=COMPOSER_PLACEHOLDER, submit_mode="disable")
+    retry_message: str | None = st.session_state.get(RETRY_MESSAGE_KEY)
+    prompt = st.chat_input(
+        placeholder=COMPOSER_PLACEHOLDER,
+        submit_mode="disable",
+        disabled=retry_message is not None,
+    )
+    if retry_message is not None:
+        return retry_message
     if isinstance(prompt, str) and prompt.strip():
         conversation_transcript().append({"role": "user", "text": prompt, "kind": "message"})
         return prompt
-    retry_message: str | None = st.session_state.pop(RETRY_MESSAGE_KEY, None)
-    return retry_message
+    return None
 
 
 def record_reply(agent_reply: AgentReply) -> None:
@@ -240,6 +248,11 @@ def answer(user_message: str) -> None:
     record_reply(agent_reply)
 
 
+def release_composer_after_retry() -> None:
+    if st.session_state.pop(RETRY_MESSAGE_KEY, None) is not None:
+        st.rerun()
+
+
 def main() -> None:
     st.set_page_config(
         page_title=PAGE_TITLE,
@@ -254,6 +267,7 @@ def main() -> None:
     render_transcript()
     if pending_message is not None:
         answer(pending_message)
+        release_composer_after_retry()
     focus_composer()
 
 
