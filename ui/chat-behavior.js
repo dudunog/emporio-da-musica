@@ -31,6 +31,8 @@
     main.scrollTop = main.scrollHeight;
   };
 
+  const refreshNativeScrollHeight = (main) => main.dispatchEvent(new FocusEvent("focus"));
+
   const localizeNativeTexts = () => {
     const sendButton = document.querySelector(SEND_BUTTON_SELECTOR);
     if (sendButton && sendButton.getAttribute("aria-label") !== SEND_BUTTON_LABEL) {
@@ -67,6 +69,7 @@
 
   const trackCustomerScroll = ({ target }) => {
     if (target !== document.querySelector(MAIN_SELECTOR)) return;
+    refreshNativeScrollHeight(target);
     const distanceToEnd = target.scrollHeight - target.clientHeight - target.scrollTop;
     followingConversation = distanceToEnd <= SCROLL_TOLERANCE_PX;
   };
