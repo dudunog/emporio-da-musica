@@ -8,7 +8,6 @@ dependencies = [
     "anthropic>=2.3.0",
     "pypdf>=6.21.4",
     "python-dotenv>=1.2.0",
-    "streamlit==1.66.1",
 ]
 
 [dependency-groups]
@@ -57,7 +56,7 @@ max-complexity = 6
 [tool.mypy]
 strict = true
 python_version = "3.12"
-files = ["emporio_agent", "tests", "app.py"]
+files = ["emporio_agent", "tests"]
 disallow_any_explicit = true
 disallow_any_unimported = true
 warn_unreachable = true
