@@ -1,5 +1,6 @@
 import base64
 import logging
+import re
 from datetime import date
 from pathlib import Path
 from typing import Literal, TypedDict
@@ -21,10 +22,11 @@ from emporio_agent.agent import (
 PAGE_TITLE = "Empório da Música"
 STORE_NAME = "Empório da Música"
 STORE_TAGLINE = "Sua música começa aqui"
-ASSISTANT_NAME = "Lia"
 COMPOSER_PLACEHOLDER = "Escreva sua mensagem"
 TYPING_INDICATOR_LABEL = "Lia está digitando"
 RETRY_BUTTON_LABEL = "Tentar de novo"
+SEND_BUTTON_LABEL = "Enviar mensagem"
+SKIP_LINK_LABEL = "Ir para o conteúdo"
 ERROR_MESSAGES: dict[UnavailableReason, str] = {
     "authentication": (
         "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos."
@@ -44,14 +46,15 @@ UNAVAILABLE_LOG_HINTS: dict[UnavailableReason, str] = {
 
 APP_DIR = Path(__file__).parent
 STYLES_PATH = APP_DIR / "ui" / "styles.css"
+FOCUS_SCRIPT_PATH = APP_DIR / "ui" / "focus.js"
 AVATAR_PATH = APP_DIR / "ui" / "avatar.svg"
 AVATARS: dict[str, str | None] = {"assistant": str(AVATAR_PATH), "user": None}
 HISTORY_KEY = "history"
 TRANSCRIPT_KEY = "transcript"
 RETRY_MESSAGE_KEY = "retry_message"
 RUN_COUNTER_KEY = "run_counter"
-RETRY_CONTAINER_KEY = "retry"
-RETRY_BUTTON_KEY = "retry_button"
+RETRY_CONTAINER_KEY = "resend"
+RETRY_BUTTON_KEY = "resend_button"
 HEADER_TEMPLATE = (
     '<header class="store-header">'
     '<img class="store-avatar" src="{avatar}" alt="">'
@@ -69,25 +72,18 @@ TYPING_INDICATOR_TEMPLATE = (
 ERROR_BUBBLE_TEMPLATE = (
     '<div class="error-bubble" role="alert"><span class="error-icon"></span><p>{text}</p></div>'
 )
-FOCUS_SCRIPT_TEMPLATE = """<script>
-(() => {{
-  document.documentElement.lang = "pt-BR";
-  const selector = 'textarea[data-testid="stChatInputTextArea"]';
-  let attempts = 0;
-  const timer = setInterval(() => {{
-    attempts += 1;
-    const composer = document.querySelector(selector);
-    if (composer && !composer.disabled) {{
-      clearInterval(timer);
-      if (document.activeElement !== composer) composer.focus({{ preventScroll: true }});
-      return;
-    }}
-    if (attempts >= 600) clearInterval(timer);
-  }}, 100);
-}})();
-</script><!-- {nonce} -->"""
+RUN_NONCE_MARKER = "__RUN_NONCE__"
+SEND_BUTTON_LABEL_MARKER = "__SEND_BUTTON_LABEL__"
+SKIP_LINK_LABEL_MARKER = "__SKIP_LINK_LABEL__"
 MARKDOWN_DOLLAR = "$"
 MARKDOWN_DOLLAR_ESCAPED = "\\$"
+CURRENCY_PREFIX_WITH_SPACE = "R$ "
+CURRENCY_PREFIX_NO_BREAK = "R$\u00a0"
+MARKDOWN_ESCAPES = (
+    (re.compile(r"([\\*_#`\[\]<>~])"), r"\\\1"),
+    (re.compile(r"^(\s*)([-+=])", re.MULTILINE), r"\1\\\2"),
+    (re.compile(r"^(\s*\d+)([.)])(?=\s)", re.MULTILINE), r"\1\\\2"),
+)
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -145,11 +141,30 @@ def render_header() -> None:
 
 
 def focus_composer() -> None:
-    st.html(FOCUS_SCRIPT_TEMPLATE.format(nonce=next_run_nonce()), unsafe_allow_javascript=True)
+    substitutions = {
+        RUN_NONCE_MARKER: str(next_run_nonce()),
+        SEND_BUTTON_LABEL_MARKER: SEND_BUTTON_LABEL,
+        SKIP_LINK_LABEL_MARKER: SKIP_LINK_LABEL,
+    }
+    script = FOCUS_SCRIPT_PATH.read_text(encoding="utf-8")
+    for marker, value in substitutions.items():
+        script = script.replace(marker, value)
+    st.html(f"<script>{script}</script>", unsafe_allow_javascript=True)
 
 
 def as_markdown(text: str) -> str:
-    return text.replace(MARKDOWN_DOLLAR, MARKDOWN_DOLLAR_ESCAPED)
+    unbreakable = text.replace(CURRENCY_PREFIX_WITH_SPACE, CURRENCY_PREFIX_NO_BREAK)
+    return unbreakable.replace(MARKDOWN_DOLLAR, MARKDOWN_DOLLAR_ESCAPED)
+
+
+def as_literal_markdown(text: str) -> str:
+    escaped = text
+    for pattern, replacement in MARKDOWN_ESCAPES:
+        escaped = pattern.sub(replacement, escaped)
+    return escaped.replace(MARKDOWN_DOLLAR, MARKDOWN_DOLLAR_ESCAPED)
+
+
+BUBBLE_RENDERERS = {"user": as_literal_markdown, "assistant": as_markdown}
 
 
 def request_retry() -> None:
@@ -173,7 +188,7 @@ def render_bubble(bubble: Bubble, show_retry: bool) -> None:
         if bubble["kind"] == "error":
             render_error_bubble(bubble["text"], show_retry)
             return
-        st.markdown(as_markdown(bubble["text"]))
+        st.markdown(BUBBLE_RENDERERS[bubble["role"]](bubble["text"]))
 
 
 def render_transcript() -> None:

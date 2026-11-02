@@ -2,7 +2,8 @@
    texto sobre fundo 16.96 / 15.91; texto sobre bolha da Lia 15.30 / 13.55;
    branco sobre bolha do cliente 5.01 / 7.11; secundario sobre fundo 6.00 / 7.03;
    placeholder sobre composer 4.90 / 4.83; marca sobre fundo 4.86 / 7.83;
-   erro sobre bolha de erro 6.05 / 5.99; icone sobre botao de envio 5.01 / 7.83. */
+   erro sobre bolha de erro 6.05 / 5.99; erro sobre superficie 6.57 / 6.21;
+   icone sobre botao de envio 5.01 / 7.83; anel de foco sobre composer 5.01 / 7.31. */
 .stApp {
   --white: #FFFFFF;
   --amber: #B4531A;
@@ -37,6 +38,7 @@
   --avatar-bubble: 28px;
   --avatar-header: 36px;
   --header-height: 56px;
+  --control-size: 40px;
   --body-size: 15px;
   --body-line: 22px;
   --title-size: 16px;
@@ -62,10 +64,7 @@
   padding-left: var(--page-pad-x);
   padding-right: var(--page-pad-x);
 }
-.stMainBlockContainer {
-  padding-top: 0;
-  padding-bottom: var(--space-4);
-}
+.stMainBlockContainer { padding-top: var(--space-2); padding-bottom: var(--space-4); }
 .stMainBlockContainer > [data-testid="stVerticalBlock"] { gap: var(--space-4); }
 [data-testid="stBottom"] > div { background: var(--bg); }
 [data-testid="stBottomBlockContainer"] {
@@ -73,7 +72,7 @@
   padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
 }
 
-/* Cabecalho */
+/* Cabecalho: mesmo fundo da pagina (so o composer e superficie), separado por 1px */
 .store-header {
   display: flex;
   align-items: center;
@@ -89,24 +88,12 @@
   border-radius: 50%;
   box-shadow: 0 0 0 1px var(--avatar-ring);
 }
-.store-name, .store-tagline { margin: 0; line-height: 20px; }
-.store-name {
-  font-size: var(--title-size);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.store-tagline {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
+.store-name, .store-tagline { margin: 0; }
+.store-name { font-size: var(--title-size); line-height: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.store-tagline { font-size: 13px; line-height: 16px; color: var(--text-secondary); }
 
 /* Bolhas */
-.stChatMessage {
-  padding: 0;
-  gap: var(--space-2);
-  align-items: flex-end;
-  background: transparent;
-}
+.stChatMessage { padding: 0; gap: var(--space-2); align-items: flex-end; background: transparent; }
 .stChatMessage [data-testid="stChatMessageAvatarImage"] {
   width: var(--avatar-bubble);
   height: var(--avatar-bubble);
@@ -125,6 +112,7 @@
 .stChatMessage [data-testid="stMarkdownContainer"],
 .stChatMessage [data-testid="stChatMessageContent"] p,
 .stChatMessage [data-testid="stChatMessageContent"] li {
+  font-family: var(--font-sans);
   font-size: inherit;
   line-height: inherit;
 }
@@ -132,6 +120,7 @@
 .stChatMessage [data-testid="stChatMessageContent"] ul,
 .stChatMessage [data-testid="stChatMessageContent"] ol { margin-bottom: var(--space-2); padding-left: 20px; }
 .stChatMessage [data-testid="stChatMessageContent"] li { margin-bottom: var(--space-1); }
+.stChatMessage [data-testid="stChatMessageContent"] li::marker { color: var(--text-secondary); }
 .stChatMessage [data-testid="stChatMessageContent"] :last-child { margin-bottom: 0; }
 .stChatMessage [data-testid="stChatMessageContent"] table { display: block; overflow-x: auto; }
 .stChatMessage:has([data-testid="stChatMessageAvatarImage"]) [data-testid="stChatMessageContent"] {
@@ -139,10 +128,7 @@
   background: var(--surface-agent);
   border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-inner);
 }
-.stChatMessage:has([data-testid="stChatMessageAvatarUser"]) {
-  flex-direction: row-reverse;
-  justify-content: flex-start;
-}
+.stChatMessage:has([data-testid="stChatMessageAvatarUser"]) { flex-direction: row-reverse; justify-content: flex-start; }
 .stChatMessage:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageAvatarUser"] { display: none; }
 .stChatMessage:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
   max-width: var(--bubble-max-user);
@@ -152,28 +138,43 @@
 }
 .stChatMessage:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] a { color: inherit; }
 
-/* Composer */
-.stChatInput > div {
+/* Composer: a caixa visual e o div anonimo filho de stChatInput (Streamlit 1.66.1);
+   com texto em varias linhas o botao fica embaixo a direita, ao lado do textarea */
+[data-testid="stChatInput"] > div {
   border-radius: var(--radius-pill);
   background: var(--surface);
   border: 1px solid var(--border);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
 }
-.stChatInput [data-testid="stChatInputTextArea"] {
+[data-testid="stChatInput"] > div > div { flex-direction: row; align-items: flex-end; }
+[data-testid="stChatInput"] > div > div > div:has(> [data-testid="stChatInputTextArea"]) { flex: 1 1 auto; width: auto; }
+[data-testid="stChatInput"] > div > div > div:has([data-testid="stChatInputSubmitButton"]) { flex: none; width: auto; }
+[data-testid="stChatInputTextArea"] {
   font-family: var(--font-sans);
   font-size: 16px;
   line-height: 24px;
   color: var(--text);
 }
-.stChatInput [data-testid="stChatInputTextArea"]::placeholder { color: var(--text-placeholder); }
-.stChatInput [data-testid="stChatInputSubmitButton"] {
-  width: 40px;
-  height: 40px;
+[data-testid="stChatInputTextArea"]::placeholder { color: var(--text-placeholder); }
+[data-testid="stChatInputSubmitButton"] {
+  position: relative;
+  width: var(--control-size);
+  height: var(--control-size);
   border-radius: 50%;
   background: var(--brand);
   color: var(--on-brand);
 }
-.stChatInput [data-testid="stChatInputSubmitButton"]:hover { background: var(--brand-hover); }
+[data-testid="stChatInputSubmitButton"]:hover { background: var(--brand-hover); }
+
+/* Alvo de toque de 44px nos botoes de 40px (o inset parte da caixa de padding: a borda de 1px do retry pede 3px) */
+[data-testid="stChatInputSubmitButton"]::before,
+.st-key-resend [data-testid="stBaseButton-secondary"]::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+}
+.st-key-resend [data-testid="stBaseButton-secondary"]::before { inset: -3px; }
 
 /* Digitando */
 .typing {
@@ -211,11 +212,7 @@
   background: var(--surface-error);
   border: 1px solid var(--error);
 }
-.error-bubble {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
+.error-bubble { display: flex; align-items: flex-start; gap: var(--space-2); }
 .error-bubble p { margin: 0; }
 .error-icon {
   position: relative;
@@ -236,26 +233,24 @@
 }
 .error-icon::before { top: 2px; height: 4px; }
 .error-icon::after { top: 8px; height: 2px; }
-.st-key-retry [data-testid="stBaseButton-secondary"] {
+.st-key-resend { padding-left: var(--space-6); }
+.st-key-resend [data-testid="stBaseButton-secondary"] {
   position: relative;
-  min-height: 40px;
+  min-height: var(--control-size);
   padding: 0 var(--space-4);
-  border: 1px solid var(--error);
+  border: 1px solid var(--border);
   border-radius: var(--space-2);
-  background: transparent;
+  background: var(--surface);
   color: var(--error);
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
 }
-.st-key-retry [data-testid="stBaseButton-secondary"]::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-}
-.st-key-retry [data-testid="stBaseButton-secondary"]:hover {
-  background: var(--surface);
+.st-key-resend [data-testid="stBaseButton-secondary"] p { font-family: inherit; font-weight: inherit; }
+.st-key-resend [data-testid="stBaseButton-secondary"]:hover,
+.st-key-resend [data-testid="stBaseButton-secondary"]:active {
   border-color: var(--error);
+  background: var(--surface);
   color: var(--error);
 }
 
@@ -270,7 +265,7 @@
     --bubble-max-user: 85%;
     --bubble-max-agent: 100%;
   }
-  .st-key-retry [data-testid="stBaseButton-secondary"] { min-height: 44px; }
+  .st-key-resend [data-testid="stBaseButton-secondary"] { min-height: 44px; }
 }
 
 /* Movimento reduzido */
@@ -286,13 +281,9 @@
   }
 }
 
-/* Foco */
-.stChatInput > div:focus-within {
-  border-color: var(--border);
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-.st-key-retry [data-testid="stBaseButton-secondary"]:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
+/* Foco: no composer um unico anel de 2px (borda + sombra de 1px na mesma cor); nos botoes anel afastado */
+[data-testid="stChatInput"] > div:focus-within { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+[data-testid="stChatInputSubmitButton"]:focus-visible,
+.st-key-resend [data-testid="stBaseButton-secondary"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+[data-testid="stChatInputSubmitButton"]:focus,
+.st-key-resend [data-testid="stBaseButton-secondary"]:focus { box-shadow: none; }
