@@ -142,9 +142,9 @@ Para a tela não parecer Streamlit:
 
 - `.streamlit/config.toml` define temas claro e escuro com a paleta âmbar, fonte Inter, raios próprios, `toolbarMode = "minimal"` e `showErrorDetails = "none"`.
 - `ui/styles.css` esconde cabeçalho, menu, botão de deploy e indicador de execução, e redesenha bolhas e composer.
-- `app.py` usa `st.html` para cabeçalho com avatar, indicador de digitação e bolha de erro, sem título, spinner ou barra lateral do Streamlit.
-- `ui/focus.js` define `lang="pt-BR"`, devolve o foco ao campo depois de cada resposta e traduz o nome acessível do botão de envio e o link de pular conteúdo.
-- `as_markdown` em `app.py` escapa `$` para o Streamlit não ler preços como LaTeX e usa espaço inquebrável entre `R$` e o valor.
+- `app.py` usa `st.html` para cabeçalho com avatar, bolha do cliente, indicador de digitação e bolha de erro, sem título, spinner ou barra lateral do Streamlit. O texto do cliente é escapado com `html.escape` e aparece sempre literal.
+- `ui/focus.js` define `lang="pt-BR"`, devolve o foco ao campo depois de cada resposta e, com um `MutationObserver`, mantém em português o nome acessível do botão de envio, o link de pular conteúdo e o diálogo nativo de queda de conexão.
+- `as_markdown` em `app.py`, usado só nas respostas da Lia, escapa `$` para o Streamlit não ler preços como LaTeX e usa espaço inquebrável entre `R$` e o valor.
 
 ### Histórico na sessão
 
@@ -185,9 +185,9 @@ uv run pytest
 uv run pytest -m live
 ```
 
-Os quatro primeiros não chamam a API e rodam sem chave. `uv run pytest` executa 179 testes: promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a regra de importação do domínio e os textos da interface. `tests/test_agent.py` importa `httpx2`, dependência transitiva do SDK, para construir os erros da API.
+Os quatro primeiros não chamam a API e rodam sem chave. `uv run pytest` executa 189 testes: promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a regra de importação do domínio e os textos da interface. `tests/test_agent.py` importa `httpx2`, dependência transitiva do SDK, para construir os erros da API.
 
-`uv run pytest -m live` roda 8 conversas de `tests/test_live_conversations.py` contra a API real e consome crédito. Sem chave, ou com o valor de exemplo, os 8 ficam como `skipped`. Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. Os cenários são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
+`uv run pytest -m live` roda 23 testes de `tests/test_live_conversations.py` contra a API real e consome crédito: 8 conversas roteirizadas e 15 perguntas legítimas que a Lia não pode recusar. Sem chave, ou com o valor de exemplo, os 23 ficam como `skipped`. Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. As conversas são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
 
 A avaliação completa é um roteiro de 23 cenários que chama `reply` direto, com a data fixada. O roteiro e o harness ficaram fora deste repositório por decisão de escopo, então daqui só dá para rerodar o subconjunto acima.
 
@@ -218,14 +218,14 @@ Resultado de execução ao vivo só é citado aqui quando há registro da execu�
 | Reclamação sem registro persistente | A Lia diz que a reclamação será registrada e encaminhada com retorno em 24 horas úteis, como manda o manual, mas nada é gravado nem enviado. O cliente recebe uma promessa que nenhum sistema cumpre | Ferramenta de escrita que grave a reclamação e avise o responsável, com o protocolo na resposta |
 | Sem handoff real | Pedir atendente devolve WhatsApp e horário. O cliente repete tudo para a equipe, que não recebe contexto | Enviar à equipe um resumo da conversa no momento do encaminhamento |
 | Valores em R$ verificados só em teste | Um preço errado do modelo chega ao cliente, porque nada confere a resposta em tempo de execução | Rodar a checagem de `tests/money_grounding.py` dentro de `reply` e trocar a resposta por contingência quando falhar |
-| Histórico perdido no reload | Recarregar a página apaga a conversa, e o cliente repete número do pedido e contato | Tabela de mensagens por cliente verificado, com retenção definida. Depende da verificação |
+| Histórico perdido no reload e no reinício do servidor | Recarregar a página apaga a conversa, e o cliente repete número do pedido e contato. Se o servidor reiniciar com a página aberta, as bolhas continuam na tela, mas a mensagem seguinte recomeça a conversa | Tabela de mensagens por cliente verificado, com retenção definida. Depende da verificação |
 | Sem streaming | A resposta aparece inteira de uma vez. Na espera há só o indicador de digitação e o campo bloqueado, e a espera soma cada rodada de ferramenta | Streaming do SDK na bolha, com o indicador só até o primeiro texto |
 | Sem feriados | Em feriado de dia útil a Lia informa o horário normal, e prazos em dias úteis não são calculados | Calendário de feriados de Campo Grande em `get_store_info` |
 | Catálogo em memória | SQLite carregado dos CSVs uma vez por processo: mudança de preço ou estoque só aparece depois de reiniciar, e pedido nenhum muda de situação | Trocar a origem por um banco da loja mantendo as assinaturas das ferramentas |
 | Limite fixo de saída | `MAX_OUTPUT_TOKENS = 1024` inclui o raciocínio. Se estourar, o cliente vê "Essa resposta ficou longa demais" e precisa perguntar de novo | Medir o consumo real por tipo de resposta e ajustar o limite |
 | Sem métricas de uso | O log registra só nome da ferramenta e erro. Custo e latência por conversa são desconhecidos | Registrar `usage` e tempo por turno, sem dados pessoais |
-| Strings fixas do Streamlit | Leitor de tela anuncia "Chat message from user" e "Chat message from assistant" em inglês em cada bolha, porque não há parâmetro para trocar | Estender `ui/focus.js`, que já traduz o botão de envio e o link de pular conteúdo |
-| Dependência de seletores da versão 1.66.1 | `ui/styles.css` depende de `data-testid` e do div interno sem identificador do composer. Atualizar o Streamlit pode quebrar o layout sem erro, e `pyproject.toml` aceita `>=1.66.0`: só `uv.lock` fixa a versão | Fixar a versão em `pyproject.toml` e comparar screenshots em CI |
+| Strings fixas do Streamlit | Leitor de tela anuncia "Chat message from user" e "Chat message from assistant" em inglês em cada bolha, porque não há parâmetro para trocar. Uma queda de conexão antes da primeira execução do script ainda mostra o diálogo nativo em inglês | Estender `ui/focus.js`, que já traduz o botão de envio, o link de pular conteúdo e o diálogo de conexão |
+| Dependência de seletores da versão 1.66.1 | `ui/styles.css` depende de `data-testid`, do div interno sem identificador do composer e da caixa anônima do diálogo de conexão. Por isso `pyproject.toml` fixa `streamlit==1.66.1`, e atualizar o Streamlit pode quebrar o layout sem erro | Comparar screenshots em CI a cada atualização |
 
 ## Uso de assistentes de IA
 
@@ -248,7 +248,7 @@ O que foi rejeitado ou corrigido por causa dos validadores:
 
 Verificação: ruff, mypy e pytest passando, além de clone limpo e medições no navegador. Os comandos deste texto foram rerodados e as afirmações conferidas contra o código.
 
-Limites do método: os validadores também são agentes, e as rodadas de validação rodaram sem chave de API, com leitura do prompt, simulação de respostas e agente falso na interface. Dados, ferramentas e agente tiveram duas rodadas de validadores; a interface teve uma, seguida de um passe de correção medido pelo próprio escritor. As correções da última rodada não passaram por novo validador isolado. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
+Limites do método: os validadores também são agentes, e as rodadas de validação rodaram sem chave de API, com leitura do prompt, simulação de respostas e agente falso na interface. Dados, ferramentas e agente tiveram três rodadas de validadores; a interface teve duas, seguidas de passes de correção medidos pelos próprios escritores. As correções da última rodada não passaram por novo validador isolado. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
 
 ## Conversas de exemplo
 
