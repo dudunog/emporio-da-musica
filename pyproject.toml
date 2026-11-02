@@ -8,7 +8,7 @@ dependencies = [
     "anthropic>=2.3.0",
     "pypdf>=6.21.4",
     "python-dotenv>=1.2.0",
-    "streamlit>=1.66.0",
+    "streamlit==1.66.1",
 ]
 
 [dependency-groups]

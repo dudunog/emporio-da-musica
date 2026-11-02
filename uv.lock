@@ -333,7 +333,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=2.3.0" },
     { name = "pypdf", specifier = ">=6.21.4" },
     { name = "python-dotenv", specifier = ">=1.2.0" },
-    { name = "streamlit", specifier = ">=1.66.0" },
+    { name = "streamlit", specifier = "==1.66.1" },
 ]
 
 [package.metadata.requires-dev]

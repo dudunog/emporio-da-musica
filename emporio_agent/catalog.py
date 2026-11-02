@@ -409,9 +409,8 @@ WHERE products.product_id = ?
 """
 SEARCH_PRODUCTS_SQL = """
 SELECT products.product_id, products.name, products.category_id, products.price_cents,
-       products.stock_quantity, products.status, products.specs, products.description,
-       products.search_text, promotions.discount_percent,
-       promotions.description AS promotion_name
+       products.stock_quantity, products.status, products.specs, products.search_text,
+       promotions.discount_percent, promotions.description AS promotion_name
 FROM products
 LEFT JOIN promotions
     ON promotions.product_id = products.product_id AND promotions.is_active = 1
@@ -628,12 +627,11 @@ def get_product(product_id: int) -> ProductDetail | None:
     row = catalog_connection().execute(PRODUCT_BY_ID_SQL, (product_id,)).fetchone()
     if row is None:
         return None
-    summary = summary_from_row(row)
     return ProductDetail(
-        product_id=summary.product_id,
-        name=summary.name,
-        category=summary.category,
-        availability=summary.availability,
+        product_id=row["product_id"],
+        name=row["name"],
+        category=CATEGORY_SLUGS[row["category_id"]],
+        availability=availability_of(row["status"], row["stock_quantity"]),
         description=row["description"],
         specs=selected_specs(row["specs"]),
         **price_quote_from_row(row),

@@ -40,8 +40,8 @@ SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").replace(
 )
 TODAY_SECTION_TITLE = "Data de hoje"
 TODAY_TEMPLATE = (
-    "Hoje é {weekday}, {label} ({iso}). Prazos de devolução, troca e entrega já chegam "
-    "calculados nas consultas; use as datas prontas em vez de contar dias."
+    "Hoje é {weekday}, {label} ({iso}). Em pedido consultado, prazos de devolução, troca e "
+    "entrega já chegam calculados; use as datas prontas em vez de contar dias."
 )
 WEEKDAY_NAMES_PT_BR = {
     0: "segunda-feira",
@@ -81,6 +81,15 @@ SDK_ERROR_REASONS: tuple[tuple[type[anthropic.APIError], UnavailableReason], ...
     (anthropic.APIStatusError, "server"),
     (anthropic.APIConnectionError, "connection"),
 )
+TOOL_PARAMS: list[ToolParam] = [
+    {
+        "name": definition["name"],
+        "description": definition["description"],
+        "input_schema": definition["input_schema"],
+        "strict": definition["strict"],
+    }
+    for definition in TOOL_DEFINITIONS
+]
 LOGGER = logging.getLogger(__name__)
 
 
@@ -136,17 +145,6 @@ def build_system_prompt(today: date) -> list[TextBlockParam]:
         {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
         {"type": "text", "text": today_section(today)},
     ]
-
-
-TOOL_PARAMS: list[ToolParam] = [
-    {
-        "name": definition["name"],
-        "description": definition["description"],
-        "input_schema": definition["input_schema"],
-        "strict": definition["strict"],
-    }
-    for definition in TOOL_DEFINITIONS
-]
 
 
 def unavailable_reason(api_error: anthropic.APIError) -> UnavailableReason:

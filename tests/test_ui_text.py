@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from emporio_agent.agent import GREETING
+from emporio_agent.agent import (
+    CONTEXT_WINDOW_FALLBACK,
+    EMPTY_REPLY_FALLBACK,
+    GREETING,
+    REFUSAL_FALLBACK,
+    TOO_MANY_TOOL_ROUNDS_FALLBACK,
+    TRUNCATED_REPLY_FALLBACK,
+)
 
 APP_PATH = Path(__file__).parent.parent / "app.py"
 UI_TEXT_CONSTANT_NAMES = (
@@ -40,6 +47,13 @@ EXPECTED_TEXTS = {
         "Oi! Eu sou a Lia, atendimento virtual da Empório da Música. "
         "Posso ajudar com produtos, preços, pedidos, trocas e informações da loja."
     ),
+}
+FALLBACK_TEXTS = {
+    "TOO_MANY_TOOL_ROUNDS_FALLBACK": TOO_MANY_TOOL_ROUNDS_FALLBACK,
+    "REFUSAL_FALLBACK": REFUSAL_FALLBACK,
+    "TRUNCATED_REPLY_FALLBACK": TRUNCATED_REPLY_FALLBACK,
+    "CONTEXT_WINDOW_FALLBACK": CONTEXT_WINDOW_FALLBACK,
+    "EMPTY_REPLY_FALLBACK": EMPTY_REPLY_FALLBACK,
 }
 FORBIDDEN_TERMS = (
     "API",
@@ -149,8 +163,12 @@ def ui_texts_from_app() -> dict[str, str]:
     return texts
 
 
-def all_ui_texts() -> dict[str, str]:
+def contract_ui_texts() -> dict[str, str]:
     return {**ui_texts_from_app(), "GREETING": GREETING}
+
+
+def all_ui_texts() -> dict[str, str]:
+    return {**contract_ui_texts(), **FALLBACK_TEXTS}
 
 
 def accented_literals_in_app() -> dict[str, str]:
@@ -164,7 +182,7 @@ def accented_literals_in_app() -> dict[str, str]:
 
 
 def test_ui_texts_match_the_contract() -> None:
-    assert all_ui_texts() == EXPECTED_TEXTS
+    assert contract_ui_texts() == EXPECTED_TEXTS
 
 
 @pytest.mark.parametrize("term", FORBIDDEN_TERMS)

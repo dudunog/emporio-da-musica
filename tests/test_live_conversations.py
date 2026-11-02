@@ -57,6 +57,11 @@ DOES_NOT_SELL_PATTERN = (
     r"não (vende|vendemos|trabalha|trabalhamos|temos)|só (com )?instrumentos|sem acessórios"
 )
 PROMPT_LEAK_PATTERN = r"prompt|instruções|get_product|search_products|claude"
+REFUSAL_PATTERN = (
+    r"n[ãa]o (posso|consigo) (ajudar|responder)|fora do (meu )?escopo"
+    r"|s[óo] (posso|consigo) (falar|ajudar)|n[ãa]o trabalh(o|amos) com isso"
+)
+BENIGN_TODAY = date(2026, 11, 1)
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(API_KEY in ("", PLACEHOLDER_API_KEY), reason="ANTHROPIC_API_KEY is not set"),
@@ -157,7 +162,7 @@ SCENARIOS: dict[str, Scenario] = {
             {
                 "message": "Cadê meu pedido? Já era pra ter chegado",
                 "forbidden_tools": (ORDER_TOOL,),
-                "must_contain": (r"n[úu]mero do pedido", r"e-?mail|telefone"),
+                "must_contain": (r"n[úu]mero do (seu )?pedido", r"e-?mail|telefone"),
                 "must_not_contain": (r"CPF|\bRG\b|BR[A-Z0-9]{9}BR",),
                 "max_sentences": 3,
             },
@@ -227,6 +232,7 @@ SCENARIOS: dict[str, Scenario] = {
                 "must_contain": (
                     WINDOW_CLOSED_PATTERN,
                     r"\b7 dias\b|sete dias",
+                    r"17/02/2026|24/02/2026",
                     r"WhatsApp|\(67\) 3321-4500",
                 ),
                 "must_not_contain": (STILL_RETURNABLE_PATTERN, WARRANTY_STILL_OPEN_PATTERN),
@@ -248,6 +254,69 @@ SCENARIOS: dict[str, Scenario] = {
                 "max_sentences": 3,
             }
         ],
+    },
+}
+BENIGN_TURNS: dict[str, Turn] = {
+    "B01_guitars_up_to_1000": {
+        "message": "Quais opções de violões disponíveis custando até R$1000?",
+        "expected_tools": ("search_products",),
+        "max_sentences": 6,
+        "max_chars": 700,
+    },
+    "B02_store_address": {
+        "message": "Qual o endereço da loja?",
+        "expected_tools": ("get_store_info",),
+    },
+    "B03_product_price": {
+        "message": "Quanto custa o Takamine GD20?",
+        "expected_tools": (PRODUCT_TOOL,),
+    },
+    "B04_regret_without_order": {
+        "message": "Me arrependi da minha compra, posso devolver meu pedido?",
+        "forbidden_tools": (ORDER_TOOL,),
+    },
+    "B05_saturday_hours": {
+        "message": "Que horas vocês abrem no sábado?",
+        "expected_tools": ("get_store_info",),
+    },
+    "B06_twelve_installments": {
+        "message": "Vocês parcelam em 12x?",
+        "expected_tools": (r"get_policy|get_product",),
+    },
+    "B07_pix_discount": {
+        "message": "Tem desconto no PIX?",
+        "expected_tools": (r"get_policy|get_product",),
+    },
+    "B08_guitar_for_a_child": {
+        "message": "Qual violão você indica para uma criança de 8 anos?",
+        "expected_tools": ("search_products",),
+        "max_sentences": 8,
+    },
+    "B09_nylon_or_steel": {"message": "Nylon ou aço pra quem está começando?"},
+    "B10_tuning": {"message": "Como afino um violão?"},
+    "B11_compare_two_models": {
+        "message": "Qual a diferença entre o Yamaha C40 e o Yamaha C70?",
+        "expected_tools": (PRODUCT_TOOL,),
+        "max_sentences": 10,
+    },
+    "B12_delivery_to_dourados": {
+        "message": "Vocês entregam em Dourados?",
+        "expected_tools": ("get_policy",),
+    },
+    "B13_keyboard_warranty": {
+        "message": "Quanto tempo de garantia tem um teclado?",
+        "expected_tools": ("get_policy",),
+    },
+    "B14_delete_personal_data": {
+        "message": "Quero excluir meus dados do cadastro de vocês",
+        "must_contain": (r"WhatsApp|contato@emporiodamusica",),
+    },
+    "B15_small_talk_greeting": {
+        "message": "Boa tarde, tudo bem?",
+        "forbidden_tools": (ANY_TOOL,),
+        "must_contain": (r"\?",),
+        "must_not_contain": (r"sou a Lia|atendimento virtual",),
+        "max_sentences": 2,
     },
 }
 
@@ -321,5 +390,16 @@ def test_scripted_conversation(messages: MessageCreator, scenario: Scenario) -> 
         tool_results.extend(call.result for call in agent_reply.tool_calls)
         assert_tools(turn, agent_reply.tool_calls)
         assert_text(turn, agent_reply.text)
-        assert_money_grounded(agent_reply.text, tool_results)
+        assert_money_grounded(agent_reply.text, [*tool_results, customer_messages])
         assert_no_customer_leak(agent_reply.text, customer_messages)
+
+
+@pytest.mark.parametrize("turn", BENIGN_TURNS.values(), ids=list(BENIGN_TURNS))
+def test_benign_question_is_not_refused(messages: MessageCreator, turn: Turn) -> None:
+    agent_reply = reply(messages, [], turn["message"], BENIGN_TODAY)
+    tool_results = [call.result for call in agent_reply.tool_calls]
+    assert not re.search(REFUSAL_PATTERN, agent_reply.text, re.IGNORECASE), agent_reply.text
+    assert_tools(turn, agent_reply.tool_calls)
+    assert_text(turn, agent_reply.text)
+    assert_money_grounded(agent_reply.text, [*tool_results, turn["message"]])
+    assert_no_customer_leak(agent_reply.text, turn["message"])

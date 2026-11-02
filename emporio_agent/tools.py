@@ -53,7 +53,8 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             "promotional price, discount percent and string type, enough for a plain price, "
             "stock or options question. With name_contains, discontinued and coming-soon "
             "products are included so their status can be explained; with category or price "
-            "only, discontinued products are omitted but out-of-stock ones still appear marked."
+            "only, discontinued products are omitted but out-of-stock and coming-soon ones still "
+            "appear marked."
         ),
         "strict": True,
         "input_schema": {
@@ -63,7 +64,8 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                     **OPTIONAL_STRING_SCHEMA,
                     "description": (
                         "Brand and model code from the product name, such as 'Takamine GD20' "
-                        "or 'SN-7C'; no sentences and no generic words."
+                        "or 'SN-7C', or a type word from product names such as '7 Cordas' when "
+                        "looking for alternatives; no sentences and no generic words."
                     ),
                 },
                 "category": {
@@ -182,9 +184,9 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
         "description": (
             "Return one section of the store policy manual by topic. Use it for questions about "
             "payment and installments, exchanges and returns, shipping, promotion rules, customer "
-            "service, warranty or privacy, and answer only the relevant part. A defect or "
-            "warranty question may need both exchanges_returns and warranty; regular opening "
-            "hours come from get_store_info."
+            "service, warranty, privacy or opening hours on special dates (opening_hours), and "
+            "answer only the relevant part. A defect or warranty question may need both "
+            "exchanges_returns and warranty; regular opening hours come from get_store_info."
         ),
         "strict": True,
         "input_schema": {
@@ -212,7 +214,7 @@ class ToolResult:
 def required_int(arguments: dict[str, object], name: str) -> int:
     value = arguments.get(name)
     if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"Argument '{name}' must be an integer, got {value!r}.")
+        raise TypeError(f"Argument '{name}' must be an integer, got {type(value).__name__}.")
     return value
 
 
@@ -221,7 +223,7 @@ def optional_string(arguments: dict[str, object], name: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str):
-        raise TypeError(f"Argument '{name}' must be a string or null, got {value!r}.")
+        raise TypeError(f"Argument '{name}' must be a string or null, got {type(value).__name__}.")
     return value
 
 
@@ -230,7 +232,7 @@ def optional_decimal(arguments: dict[str, object], name: str) -> Decimal | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int | float):
-        raise TypeError(f"Argument '{name}' must be a number or null, got {value!r}.")
+        raise TypeError(f"Argument '{name}' must be a number or null, got {type(value).__name__}.")
     return Decimal(str(value))
 
 
@@ -240,7 +242,7 @@ def required_choice[Choice: str](
     value = arguments.get(name)
     matches = [choice for choice in choices if choice == value]
     if not matches:
-        raise ValueError(f"Argument '{name}' must be one of {sorted(choices)}, got {value!r}.")
+        raise ValueError(f"Argument '{name}' must be one of {sorted(choices)}.")
     return matches[0]
 
 
@@ -342,5 +344,5 @@ def dispatch_tool(name: str, arguments: dict[str, object], today: date) -> ToolR
     try:
         return ToolResult(content=handler(arguments, today), is_error=False)
     except Exception as handler_error:
-        LOGGER.exception("Tool %s failed", name)
+        LOGGER.error("Tool %s failed (%s)", name, type(handler_error).__name__)
         return ToolResult(content=f"{type(handler_error).__name__}: {handler_error}", is_error=True)

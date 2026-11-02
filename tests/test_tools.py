@@ -214,6 +214,28 @@ def test_unknown_tool_name_returns_error_payload() -> None:
     assert tool_result == ToolResult(content="Unknown tool: unknown_tool", is_error=True)
 
 
+def test_handler_failure_log_has_no_argument_values(caplog: pytest.LogCaptureFixture) -> None:
+    phone = 67996547821
+    arguments: dict[str, object] = {
+        "order_id": 8,
+        "customer_email": None,
+        "customer_phone": phone,
+    }
+
+    tool_result = dispatch_tool("get_order_status", arguments, TODAY)
+
+    assert tool_result.is_error is True
+    assert str(phone) not in tool_result.content
+    assert str(phone) not in caplog.text
+    assert "get_order_status" in caplog.text
+    assert "TypeError" in caplog.text
+
+
+def test_policy_description_routes_special_date_hours() -> None:
+    definitions = {definition["name"]: definition for definition in TOOL_DEFINITIONS}
+    assert "opening hours on special dates" in definitions["get_policy"]["description"]
+
+
 def test_invalid_argument_type_returns_error_payload() -> None:
     tool_result = dispatch_tool("get_product", {"product_id": "abc"}, TODAY)
     assert tool_result.is_error is True

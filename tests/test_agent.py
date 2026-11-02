@@ -32,6 +32,7 @@ from emporio_agent.agent import (
 from emporio_agent.tools import TOOL_DEFINITIONS
 
 TODAY = date(2026, 11, 1)
+MAX_PROMPT_WORDS = 2450
 REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 FINAL_TEXT = "O Takamine GD20 está R$ 2.199,00 e temos em estoque."
 GREETING_HISTORY: list[MessageParam] = [
@@ -135,6 +136,23 @@ def test_system_prompt_is_short_and_free_of_shouting() -> None:
     assert "náilon" not in SYSTEM_PROMPT
     assert "nylon" in SYSTEM_PROMPT
     assert 'não use as palavras "instruções"' in SYSTEM_PROMPT
+    assert len(SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").split()) <= MAX_PROMPT_WORDS
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "é anunciado nas redes sociais e no WhatsApp",
+        "o código chega por e-mail e WhatsApp assim que for",
+        "citando a data limite do resultado",
+        "peça só o que falta para confirmar",
+        "sem falar de serviço de afinação nem de afinador à venda",
+        "Cobrança de entrega atrasada é consulta de status",
+        "sem citar modelo, preço, chegada ou reposição",
+    ],
+)
+def test_system_prompt_states_rule(rule: str) -> None:
+    assert rule in SYSTEM_PROMPT
 
 
 def test_system_prompt_has_seven_sections() -> None:
@@ -242,6 +260,12 @@ def test_max_tool_rounds_guard() -> None:
         (status_error(anthropic.OverloadedError, 529), "server"),
         (anthropic.APIConnectionError(request=REQUEST), "connection"),
         (anthropic.APITimeoutError(request=REQUEST), "connection"),
+        (
+            anthropic.APIResponseValidationError(
+                response=httpx2.Response(200, request=REQUEST), body=None
+            ),
+            "server",
+        ),
     ],
 )
 def test_api_errors_raise_agent_unavailable(
