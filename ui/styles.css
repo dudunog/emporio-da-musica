@@ -139,6 +139,9 @@ main.stMain:focus-visible::before { top: var(--header-height); height: calc(100v
 .stChatMessage [data-testid="stChatMessageContent"] li::marker { color: var(--text-secondary); }
 .stChatMessage [data-testid="stChatMessageContent"] :last-child { margin-bottom: 0; }
 .stChatMessage [data-testid="stChatMessageContent"] table { display: block; overflow-x: auto; }
+.stChatMessage [data-testid="stChatMessageContent"] a { color: inherit; }
+.stChatMessage [data-testid="stChatMessageContent"] :is(h1, h2, h3, h4, h5, h6) { padding: 0 0 var(--space-2); font: 600 var(--body-size)/var(--body-line) var(--font-sans); letter-spacing: normal; }
+.stChatMessage [data-testid="stChatMessageContent"] code:not(pre code) { background: var(--surface); color: inherit; font-size: 0.875em; }
 .stChatMessage:has([data-testid="stChatMessageAvatarImage"]) [data-testid="stChatMessageContent"] {
   max-width: var(--bubble-max-agent);
   background: var(--surface-agent);
@@ -168,12 +171,7 @@ main.stMain:focus-visible::before { top: var(--header-height); height: calc(100v
   margin: var(--space-1) var(--space-2) var(--space-1) 0;
 }
 [data-testid="stChatInput"] > div > div > div:has([data-testid="stChatInputSubmitButton"]) { flex: none; width: auto; }
-[data-testid="stChatInputTextArea"] {
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 24px;
-  color: var(--text);
-}
+[data-testid="stChatInputTextArea"] { font-family: var(--font-sans); font-size: 16px; line-height: 24px; color: var(--text); }
 [data-testid="stChatInputTextArea"]::placeholder { color: var(--text-placeholder); -webkit-text-fill-color: var(--text-placeholder); }
 [data-testid="stChatInputSubmitButton"] {
   position: relative;
