@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import { PAGE_TITLE } from "@/features/chat/chat-copy";
+import "./globals.css";
 
 const INTER = Inter({ subsets: ["latin"], variable: "--font-inter" });
 

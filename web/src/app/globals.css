@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+@theme {
+  --radius-bubble: 18px;
+  --radius-bubble-inner: 6px;
+  --radius-composer: 28px;
+  --radius-action: 8px;
+
+  --animate-typing: typing 1.2s infinite ease-in-out;
+  --animate-bubble-in: bubble-in 180ms ease-out;
+
+  @keyframes typing {
+    0%,
+    80%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    40% {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
+
+  @keyframes bubble-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-on-brand: var(--on-brand);
+  --color-page: var(--bg);
+  --color-surface: var(--surface);
+  --color-agent: var(--surface-agent);
+  --color-user: var(--surface-user);
+  --color-on-user: var(--text-on-user);
+  --color-failure-surface: var(--surface-error);
+  --color-action: var(--surface-action);
+  --color-ink: var(--text);
+  --color-muted: var(--text-secondary);
+  --color-placeholder: var(--text-placeholder);
+  --color-line: var(--border);
+  --color-ornament: var(--ornament);
+  --color-failure: var(--error);
+  --color-focus: var(--focus);
+
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --text-body: var(--body-size);
+  --text-body--line-height: var(--body-line);
+  --text-title: var(--title-size);
+  --text-title--line-height: 20px;
+  --text-title--letter-spacing: -0.01em;
+  --text-title--font-weight: 600;
+  --text-caption: 13px;
+  --text-caption--line-height: 16px;
+  --text-composer: 16px;
+  --text-composer--line-height: 24px;
+  --text-action: 14px;
+
+  --shadow-avatar: 0 0 0 1px var(--avatar-ring);
+  --shadow-composer-focus: 0 0 0 1px var(--focus);
+
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-6: var(--space-6);
+  --spacing-page-x: var(--page-pad-x);
+  --spacing-header: var(--header-height);
+  --spacing-content: 720px;
+  --spacing-column: calc(720px - 2 * var(--page-pad-x));
+  --spacing-avatar-header: 36px;
+  --spacing-avatar-bubble: 28px;
+  --spacing-control: 40px;
+  --spacing-retry: var(--retry-height);
+  --spacing-retry-outset: 3px;
+  --spacing-bubble-x: 14px;
+  --spacing-bubble-y: 10px;
+  --spacing-bubble-user: var(--bubble-max-user);
+  --spacing-bubble-agent: min(var(--bubble-max-agent), 62ch);
+  --spacing-list-indent: 20px;
+  --spacing-composer: min(232px, 40dvh);
+  --spacing-composer-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  --spacing-dot: 6px;
+  --spacing-failure-icon: 16px;
+  --spacing-failure-icon-top: calc((var(--body-line) - 16px) / 2);
+  --spacing-ornament: 640px;
+}
+
+:root {
+  color-scheme: light dark;
+
+  --white: #ffffff;
+  --amber: #b4531a;
+  --ink: #16130f;
+
+  --brand: light-dark(var(--amber), #e8955a);
+  --brand-hover: light-dark(#9a4b12, #f2a66e);
+  --on-brand: light-dark(var(--white), var(--ink));
+  --bg: light-dark(#fffbf5, var(--ink));
+  --surface: light-dark(var(--white), #1e1a15);
+  --surface-agent: light-dark(#f5efe6, #27221c);
+  --surface-user: light-dark(var(--amber), #8c4414);
+  --surface-error: light-dark(#fef3f2, #2a1a17);
+  --surface-action: light-dark(var(--white), #3a2622);
+  --text: light-dark(#1c1917, #f3ede4);
+  --text-on-user: var(--white);
+  --text-secondary: light-dark(#6b5f55, #a89e92);
+  --text-placeholder: light-dark(#7a6f64, #8f867b);
+  --border: light-dark(#e4dcd0, #35302a);
+  --ornament: light-dark(#efe5d6, #231e18);
+  --error: light-dark(#b42318, #f97066);
+  --focus: var(--brand);
+  --avatar-ring: light-dark(transparent, var(--border));
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  --page-pad-x: var(--space-6);
+  --header-height: 56px;
+  --body-size: 15px;
+  --body-line: 22px;
+  --title-size: 16px;
+  --bubble-max-user: 72%;
+  --bubble-max-agent: 85%;
+  --retry-height: 40px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --page-pad-x: var(--space-4);
+    --header-height: 52px;
+    --body-size: 16px;
+    --body-line: 23px;
+    --title-size: 17px;
+    --bubble-max-user: 85%;
+    --bubble-max-agent: 100%;
+    --retry-height: 44px;
+  }
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 28%, transparent);
+  }
+}
