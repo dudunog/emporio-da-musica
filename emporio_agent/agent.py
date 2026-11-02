@@ -168,7 +168,9 @@ def create_message(
         )
     except anthropic.APIError as api_error:
         reason = unavailable_reason(api_error)
-        LOGGER.exception("Claude API request failed (reason=%s)", reason)
+        LOGGER.error(
+            "Claude API request failed reason=%s error=%s", reason, type(api_error).__name__
+        )
         raise AgentUnavailableError(reason) from api_error
 
 

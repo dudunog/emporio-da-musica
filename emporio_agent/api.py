@@ -8,10 +8,12 @@ from uuid import uuid4
 
 from anthropic.types import MessageParam
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import StringConstraints
 
 from emporio_agent.agent import (
+    AgentReply,
     AgentUnavailableError,
     MessageCreator,
     ToolCall,
@@ -21,6 +23,7 @@ from emporio_agent.agent import (
 )
 
 MAX_MESSAGE_LENGTH = 4000
+INVALID_REQUEST_BODY = {"detail": "invalid_request"}
 PACKAGE_LOGGER_NAME = "emporio_agent"
 LOG_FORMAT = "%(levelname)s %(name)s %(message)s"
 TOOL_OUTCOME_LABELS = {False: "ok", True: "error"}
@@ -79,6 +82,14 @@ def unavailable_response(reason: UnavailableReason) -> JSONResponse:
     )
 
 
+@app.exception_handler(RequestValidationError)
+def handle_invalid_request(_request: Request, _error: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content=INVALID_REQUEST_BODY,
+    )
+
+
 @app.exception_handler(AgentUnavailableError)
 def handle_agent_unavailable(_request: Request, error: AgentUnavailableError) -> JSONResponse:
     LOGGER.warning("chat unavailable reason=%s", error.reason)
@@ -91,6 +102,16 @@ def handle_unexpected_error(_request: Request, error: Exception) -> JSONResponse
     return unavailable_response("server")
 
 
+def run_agent(conversation: Conversation, message: str) -> AgentReply:
+    try:
+        return reply(messages_client(), conversation.history, message, date.today())
+    except AgentUnavailableError:
+        raise
+    except Exception as error:
+        LOGGER.error("chat failed unexpectedly error=%s", type(error).__name__)
+        raise AgentUnavailableError("server") from None
+
+
 @app.post(
     "/api/chat",
     responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": UnavailableResponse}},
@@ -98,9 +119,7 @@ def handle_unexpected_error(_request: Request, error: Exception) -> JSONResponse
 def chat(chat_request: ChatRequest) -> ChatResponse:
     conversation = CONVERSATIONS.get(chat_request.conversation_id or "") or Conversation()
     with conversation.lock:
-        agent_reply = reply(
-            messages_client(), conversation.history, chat_request.message, date.today()
-        )
+        agent_reply = run_agent(conversation, chat_request.message)
         conversation.history = agent_reply.history
     CONVERSATIONS[conversation.conversation_id] = conversation
     LOGGER.info(

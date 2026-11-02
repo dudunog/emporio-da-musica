@@ -308,6 +308,24 @@ def test_api_errors_raise_agent_unavailable(
     assert type(error).__name__ in caplog.text
 
 
+def test_api_error_log_has_no_provider_body_nor_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    echoed_text = "cliente.eco@exemplo.com"
+    error = anthropic.BadRequestError(
+        message=f"upstream echoed: {echoed_text}",
+        response=httpx2.Response(400, request=REQUEST),
+        body={"error": {"message": echoed_text}},
+    )
+
+    with pytest.raises(AgentUnavailableError):
+        reply(ScriptedClient([error]), [], echoed_text, TODAY)
+
+    assert "BadRequestError" in caplog.text
+    assert echoed_text not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
 def test_history_is_not_mutated_on_failure() -> None:
     client = ScriptedClient([anthropic.APIConnectionError(request=REQUEST)])
     history = copy.deepcopy(GREETING_HISTORY)

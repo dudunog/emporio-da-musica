@@ -39,6 +39,7 @@ SECRET_ERROR_DETAIL = "secret-marker traceback /Users/internal/path.py"
 CUSTOMER_TEXT = "meu pedido e bruno.martins@jmail.com"
 TOOL_ARGUMENT = "argumento-sigiloso"
 TOOL_RESULT = "resultado-sigiloso"
+INVALID_REQUEST_BODY = {"detail": "invalid_request"}
 CONCURRENT_TIMEOUT_SECONDS = 5
 OVERLAP_WINDOW_SECONDS = 0.1
 MODEL_REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -124,6 +125,12 @@ def send(client: TestClient, message: str, conversation_id: str | None = None) -
     return client.post(CHAT_PATH, json={"conversation_id": conversation_id, "message": message})
 
 
+def post_raw_body(client: TestClient, body: str) -> httpx2.Response:
+    return client.post(
+        CHAT_PATH, content=body.encode(), headers={"content-type": "application/json"}
+    )
+
+
 def conversation_id_of(response: httpx2.Response) -> str:
     body = response.json()
     conversation_id = body["conversation_id"]
@@ -138,11 +145,18 @@ def web_source_files() -> list[Path]:
     return [path for path in candidates if WEB_TEST_FILE_PATTERN.search(path.name) is None]
 
 
+def read_if_present(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ""
+
+
 def web_greetings(source_files: list[Path]) -> list[str]:
     return [
         match.group(2)
         for path in source_files
-        for match in WEB_GREETING_PATTERN.finditer(path.read_text(encoding="utf-8"))
+        for match in WEB_GREETING_PATTERN.finditer(read_if_present(path))
     ]
 
 
@@ -305,6 +319,7 @@ def test_malformed_body_returns_422(
     response = client.post(CHAT_PATH, json=invalid_body)
 
     assert response.status_code == 422
+    assert response.json() == INVALID_REQUEST_BODY
     assert fake_agent.calls == []
 
 
@@ -334,17 +349,114 @@ def test_unexpected_exception_returns_503_server_without_detail_and_logs_it(
     assert "RuntimeError" in caplog.text
 
 
-def test_lone_surrogate_message_never_becomes_a_500(
+@pytest.mark.parametrize(
+    "invalid_field",
+    [
+        f'"message": "{CUSTOMER_TEXT} \\ud83d"',
+        '"message": NaN',
+    ],
+)
+def test_undecodable_input_returns_fixed_422_without_reraising(
+    fake_agent: FakeAgent, invalid_field: str
+) -> None:
+    strict_client = TestClient(app, raise_server_exceptions=True)
+
+    response = post_raw_body(strict_client, "{" + invalid_field + "}")
+
+    assert response.status_code == 422
+    assert response.json() == INVALID_REQUEST_BODY
+    assert fake_agent.calls == []
+
+
+def test_undecodable_conversation_id_starts_new_conversation_without_echo(
+    fake_agent: FakeAgent,
+) -> None:
+    strict_client = TestClient(app, raise_server_exceptions=True)
+    body = f'{{"message": "Oi", "conversation_id": "{CUSTOMER_TEXT} \\ud83d"}}'
+
+    response = post_raw_body(strict_client, body)
+
+    assert response.status_code == 200
+    assert UUID(conversation_id_of(response)).version == 4
+    assert CUSTOMER_TEXT not in response.text
+    assert fake_agent.calls[0].history == []
+
+
+@pytest.mark.parametrize("invalid_message", [(CUSTOMER_TEXT + " ") * MAX_MESSAGE_LENGTH, "   ", ""])
+def test_invalid_message_is_never_echoed_in_the_response(
+    client: TestClient, fake_agent: FakeAgent, invalid_message: str
+) -> None:
+    response = send(client, invalid_message)
+
+    assert response.status_code == 422
+    assert response.content == b'{"detail":"invalid_request"}'
+    assert fake_agent.calls == []
+
+
+def test_oversized_body_gets_the_same_small_response(
     client: TestClient, fake_agent: FakeAgent
 ) -> None:
-    response = client.post(
-        CHAT_PATH,
-        content=b'{"conversation_id": null, "message": "\\ud800"}',
-        headers={"content-type": "application/json"},
-    )
+    oversized_body = '{"message": "' + "x" * 1_000_000 + '"}'
 
-    assert response.status_code in {422, 503}
+    response = post_raw_body(client, oversized_body)
+
+    assert response.status_code == 422
+    assert response.content == b'{"detail":"invalid_request"}'
     assert fake_agent.calls == []
+
+
+def test_unexpected_exception_is_not_reraised_to_the_server_log(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    install_fake_agent(monkeypatch, FakeAgent([RuntimeError(CUSTOMER_TEXT)]))
+    strict_client = TestClient(app, raise_server_exceptions=True)
+
+    with caplog.at_level(logging.INFO):
+        response = send(strict_client, "Oi")
+
+    assert response.status_code == 503
+    assert response.json() == {"reason": "server"}
+    assert "RuntimeError" in caplog.text
+    assert CUSTOMER_TEXT not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_unexpected_client_creation_failure_is_not_reraised(
+    fake_agent: FakeAgent, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def broken_client() -> SimpleNamespace:
+        raise ValueError(CUSTOMER_TEXT)
+
+    monkeypatch.setattr(api, "create_client", broken_client)
+    strict_client = TestClient(app, raise_server_exceptions=True)
+
+    with caplog.at_level(logging.INFO):
+        response = send(strict_client, "Oi")
+
+    assert response.status_code == 503
+    assert response.json() == {"reason": "server"}
+    assert CUSTOMER_TEXT not in caplog.text
+    assert fake_agent.calls == []
+
+
+def test_provider_error_body_echoing_customer_text_stays_out_of_the_log(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    echoed_error = anthropic.BadRequestError(
+        message=f"upstream echoed: {CUSTOMER_TEXT}",
+        response=httpx2.Response(400, request=MODEL_REQUEST),
+        body={"error": {"message": CUSTOMER_TEXT}},
+    )
+    install_scripted_model(monkeypatch, [echoed_error])
+
+    with caplog.at_level(logging.INFO):
+        response = send(client, CUSTOMER_TEXT)
+
+    assert response.status_code == 503
+    assert response.json() == {"reason": "server"}
+    assert "BadRequestError" in caplog.text
+    assert CUSTOMER_TEXT not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
 
 
 @pytest.mark.parametrize(
