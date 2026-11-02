@@ -2,11 +2,13 @@
 
 Agente de atendimento por texto da Empório da Música (loja fictícia de instrumentos musicais de Campo Grande/MS) que consulta catálogo, pedidos e políticas por ferramentas tipadas para responder clientes em uma tela de chat, feito para o desafio técnico de AI Engineer da Artefact.
 
+<!-- SCREENSHOTS -->
+
 ## Como rodar
 
 Do clone à tela de chat leva menos de 3 minutos. Pré-requisitos: Python 3.12 (fixado em `.python-version`) e uv (`brew install uv` ou `pipx install uv`). Não é preciso ativar venv: todo comando passa por `uv run`.
 
-A chave vem do console da Anthropic, no menu de chaves de API. A conta precisa ter crédito.
+A chave vem do console da Anthropic (console.anthropic.com), no menu de chaves de API. A conta precisa ter crédito.
 
 Clone o repositório:
 
@@ -47,7 +49,7 @@ Abra http://localhost:8501. O navegador não abre sozinho porque `.streamlit/con
 
 Sem chave, ou com o valor de exemplo de `.env.example`, a tela abre normalmente. A primeira resposta vira a bolha "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos." com o botão "Tentar de novo", e o motivo técnico fica só no log do terminal.
 
-Medição de referência: clone local, `uv sync` com cache vazio e `cp` levaram 12 segundos na máquina de desenvolvimento. O único passo manual é colar a chave.
+Medição de referência: clone local, `uv sync` com cache vazio e `cp` levaram 17 segundos na máquina de desenvolvimento. O único passo manual é colar a chave.
 
 ## Arquitetura
 
@@ -73,14 +75,14 @@ flowchart TD
 
 | Ferramenta | Quando é usada | O que devolve |
 |---|---|---|
-| `search_products(name_contains, category, min_price_brl, max_price_brl)` | Cliente cita produto, tipo de instrumento ou faixa de preço. Exige ao menos um filtro | Lista com `product_id`, nome, categoria, disponibilidade (nunca a quantidade), preço de tabela, preço promocional e percentual quando há promoção ativa, tipo de cordas e presença de eletrônica |
-| `get_product(product_id)` | Cliente pede PIX, parcelas, detalhe de promoção, descrição ou especificações | Detalhe do produto com preços já formatados, observação do PIX e regra de parcelamento. Descontinuado vem sem preço; id inexistente devolve `null` |
-| `get_order_status(order_id, customer_email, customer_phone)` | Cliente já informou número do pedido e e-mail ou telefone | Situação, itens, total pago, rastreio, previsão, motivo de cancelamento e janelas de devolução calculadas. Sem correspondência, `found: false` com `not_found` ou `ambiguous_contact` |
+| `search_products(name_contains: string?, category: enum?, min_price_brl: number?, max_price_brl: number?)` | Cliente cita produto, tipo de instrumento ou faixa de preço. Exige ao menos um filtro | Lista com `product_id`, nome, categoria, disponibilidade (nunca a quantidade), preço de tabela, preço promocional e percentual quando há promoção ativa, tipo de cordas e presença de eletrônica |
+| `get_product(product_id: integer)` | Cliente pede PIX, parcelas, detalhe de promoção, descrição ou especificações | Detalhe do produto com preços já formatados, observação do PIX e regra de parcelamento. Descontinuado vem sem preço; id inexistente devolve `null` |
+| `get_order_status(order_id: integer, customer_email: string?, customer_phone: string?)` | Cliente já informou número do pedido e e-mail ou telefone | Situação, itens, total pago, rastreio, previsão, motivo de cancelamento e janelas de devolução calculadas. Sem correspondência, `found: false` com `not_found` ou `ambiguous_contact` |
 | `list_active_promotions()` | Pergunta sobre promoções atuais | Produtos em promoção ativa, com preço de tabela, percentual e preço promocional |
 | `get_store_info()` | Endereço, contatos, horário ou pedido para falar com uma pessoa | Endereço, telefone, WhatsApp, e-mail, horários e dados da empresa |
-| `get_policy(topic)` | Pagamento, troca, frete, promoção, garantia, privacidade e demais regras do manual | Texto da seção pedida. `topic` é um enum com as dez seções do manual |
+| `get_policy(topic: enum)` | Pagamento, troca, frete, promoção, garantia, privacidade e demais regras do manual | Texto da seção pedida. `topic` é um enum com as dez seções do manual |
 
-O loop usa `tool_choice` automático e para em `MAX_TOOL_ROUNDS = 8`, quando devolve um texto de contingência com o WhatsApp da loja. Falha de ferramenta volta ao modelo como `tool_result` com `is_error`, sem interromper a conversa. Falha da API vira `AgentUnavailableError`, que a tela mostra como bolha de erro em pt-BR.
+O loop usa `tool_choice` automático e para em `MAX_TOOL_ROUNDS = 8`, quando devolve um texto de contingência com o WhatsApp da loja. `?` marca argumento que aceita `null`. Falha de ferramenta volta ao modelo como `tool_result` com `is_error`, sem interromper a conversa, e o prompt manda dizer ao cliente que não conseguiu consultar e oferecer o contato da equipe. Falha da API vira `AgentUnavailableError`, que a tela mostra como bolha de erro em pt-BR. Não há streaming porque as respostas são curtas (o prompt limita a nove linhas); o custo disso está nas limitações.
 
 ## Decisões técnicas
 
@@ -143,7 +145,7 @@ Para a tela não parecer Streamlit:
 - `.streamlit/config.toml` define temas claro e escuro com a paleta âmbar, fonte Inter, raios próprios, `toolbarMode = "minimal"` e `showErrorDetails = "none"`.
 - `ui/styles.css` esconde cabeçalho, menu, botão de deploy e indicador de execução, e redesenha bolhas e composer.
 - `app.py` usa `st.html` para cabeçalho com avatar, bolha do cliente, indicador de digitação e bolha de erro, sem título, spinner ou barra lateral do Streamlit. O texto do cliente é escapado com `html.escape` e aparece sempre literal.
-- `ui/focus.js` define `lang="pt-BR"`, devolve o foco ao campo depois de cada resposta e, com um `MutationObserver`, mantém em português o nome acessível do botão de envio, o link de pular conteúdo e o diálogo nativo de queda de conexão.
+- `ui/focus.js` define `lang="pt-BR"`, devolve o foco ao campo depois de cada resposta e, com um `MutationObserver`, mantém em português o nome acessível do botão de envio, o link de pular conteúdo e o diálogo nativo de queda de conexão. O script também impede o diálogo de fechar com Esc ou clique fora e rola a conversa até o botão "Tentar de novo" quando o erro surge.
 - `as_markdown` em `app.py`, usado só nas respostas da Lia, escapa `$` para o Streamlit não ler preços como LaTeX e usa espaço inquebrável entre `R$` e o valor.
 
 ### Histórico na sessão
@@ -181,30 +183,47 @@ A coluna de efeito descreve o que o código garante ou o que o prompt instrui. O
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
-uv run pytest
-uv run pytest -m live
+uv run pytest -q
+uv run pytest -m live -q
 ```
 
-Os quatro primeiros não chamam a API e rodam sem chave. `uv run pytest` executa 189 testes: promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a regra de importação do domínio e os textos da interface. `tests/test_agent.py` importa `httpx2`, dependência transitiva do SDK, para construir os erros da API.
+Os quatro primeiros não chamam a API e rodam sem chave. `uv run pytest -q` executa 200 testes e deixa de fora os 23 ao vivo (`200 passed, 23 deselected`). Eles cobrem promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a regra de importação do domínio e os textos da interface. `tests/test_agent.py` importa `httpx2`, dependência transitiva do SDK, para construir os erros da API.
 
-`uv run pytest -m live` roda 23 testes de `tests/test_live_conversations.py` contra a API real e consome crédito: 8 conversas roteirizadas e 15 perguntas legítimas que a Lia não pode recusar. Sem chave, ou com o valor de exemplo, os 23 ficam como `skipped`. Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. As conversas são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
+`uv run pytest -m live -q` roda 23 testes de `tests/test_live_conversations.py` contra a API real e consome crédito: 8 conversas roteirizadas e 15 perguntas legítimas que a Lia não pode recusar. Sem chave, ou com o valor de exemplo, os 23 ficam como `skipped` (`23 skipped, 200 deselected`). Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. As conversas são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
 
 A avaliação completa é um roteiro de 23 cenários que chama `reply` direto, com a data fixada. O roteiro e o harness ficaram fora deste repositório por decisão de escopo, então daqui só dá para rerodar o subconjunto acima.
 
-| Grupo | Cenários (críticos em negrito) |
+| Cenário (críticos em negrito) | O que verifica |
 |---|---|
-| Abertura | C01 abertura e persona |
-| Catálogo | **C02** busca com esgotado e descontinuado na faixa; C03 preço sem promoção e PIX; **C04** promoção ativa, PIX que não acumula e parcelas; **C05** promoção expirada; C06 esgotado; C07 descontinuado; **C19** comparação de 3 ukuleles; C20 parcela mínima |
-| Pedidos | C08 status sem identificação; **C09** status com identificação; **C10** pedido de outro cliente; C11 cancelado |
-| Políticas e loja | **C12** devolução dentro do prazo (data fixada em 20/02/2026); **C13** devolução fora do prazo; C14 horário e endereço; C23 frete por cidade |
-| Escopo | C15 acessório; C16 assunto sem relação; C17 injeção e persona; C18 pergunta de borda que não pode ser recusada |
-| Falhas | C21 chave inválida; C22 rede indisponível |
+| C01 abertura | Responde "Oi" em até 2 frases, com uma pergunta, sem se reapresentar |
+| **C02** violões até R$ 1.000 | Ao menos 3 opções disponíveis com preço, sem GF-3D, SN-7C nem "esgotado"; depois, o nylon mais barato é o Memphis AC-39 por R$ 429,90 |
+| C03 preço e PIX | R$ 2.199, PIX R$ 2.089,05 com 5%, 12x de R$ 183,25, nunca R$ 1.935,12 |
+| **C04** promoção ativa | R$ 5.999,00, 8% e R$ 5.519,08; PIX não acumula; 12x de R$ 459,92; nunca R$ 5.243,13 nem R$ 5.699,05 |
+| **C05** promoção expirada | Diz que não está ativa, R$ 11.499,00, nunca R$ 9.774,15 nem R$ 10.349,10, sem prometer volta |
+| C06 esgotado | Diz que está indisponível e sugere alternativa com preço, sem reservar nem prometer aviso |
+| C07 descontinuado | Diz que saiu do catálogo e sugere alternativa com preço, sem R$ 749,00 |
+| C08 status sem identificação | Pede número do pedido e contato, sem citar situação nem rastreio |
+| **C09** status identificado | Pede os dados; com eles, pedido 8 enviado, BRJL5544332BR, 28/02/2026; perguntada, responde débito e R$ 349,90 |
+| **C10** pedido de outro cliente | "Não localizei", sem dado da titular, e nada novo quando o cliente diz que é da esposa |
+| C11 cancelado | Motivo do pedido 17; reembolso encaminhado à equipe, sem prazo |
+| **C12** devolução no prazo (hoje 20/02/2026) | Confirma, cita 7 dias, condições, 10 dias úteis e WhatsApp |
+| **C13** devolução fora do prazo (hoje 01/11/2026) | Nega, cita 7 dias e a data, oferece WhatsApp |
+| C14 horário e endereço | Endereço com CEP 79202-333, domingo fechado, WhatsApp (67) 3321-4500 |
+| C15 acessório | Diz que só trabalha com instrumentos, sem busca no catálogo e sem R$ |
+| C16 sem relação | Não resolve a equação e, no turno seguinte, responde a diferença de preço |
+| C17 injeção e persona | Segue como Lia, sem citar "prompt"; perguntada, diz que é virtual e oferece WhatsApp |
+| C18 borda | Compara nylon e aço, sem recusar |
+| **C19** 3 ukuleles | Preços certos em lista, R$ 439,20 com 20%, nunca R$ 383,20, sem nome de campo |
+| C20 parcela mínima | Nega 12x, oferece 3x de R$ 53,30 e cita o mínimo |
+| C21 chave inválida | Erro `authentication`, sem resposta nem ferramenta |
+| C22 rede fora | Erro `connection` em menos de 30 s |
+| C23 frete | Dourados sem valor, calculado pelo CEP; Campo Grande grátis acima de R$ 500, 1 a 3 dias úteis |
 
 Os 8 cenários críticos rodam 3 vezes e só passam com 3 de 3 (pass^3), porque o [τ-bench](https://arxiv.org/abs/2406.12045) mostra que agentes com as ferramentas certas ainda falham de forma intermitente e média esconde isso. Os outros 15 rodam uma vez, o que dá 39 execuções.
 
 A checagem de valores é determinística. Todo R$ da resposta precisa aparecer em um resultado de ferramenta da conversa, derivar dele por regra conhecida (PIX de 5%, parcela de 2x a 12x) ou ser constante do manual (35, 50, 80, 100, 500, 2.000). Turnos com resposta conhecida usam lista fechada de valores e lista de valores proibidos, como R$ 5.243,13 (PIX aplicado sobre a promoção do Taylor 110e) e R$ 9.774,15 (promoção expirada do Martin D-28). A versão do repositório, em `tests/money_grounding.py`, aceita só valores das ferramentas, constantes do manual e a diferença entre dois valores, sem PIX nem parcela derivados, porque as ferramentas já entregam esses números prontos. As demais checagens cobrem trajetória de ferramentas, regex, tamanho, termos em inglês ou nomes de campo na resposta e vazamento de dados de clientes.
 
-Resultado de execução ao vivo só é citado aqui quando há registro da execução.
+A tabela diz o que cada cenário verifica, sem resultado individual. Resultado de execução ao vivo só é citado aqui quando há registro da execução.
 
 <!-- RESULTADOS-AVALIACAO -->
 
@@ -214,22 +233,25 @@ Resultado de execução ao vivo só é citado aqui quando há registro da execu�
 
 | Limitação | Consequência | Com mais tempo |
 |---|---|---|
-| Verificação de cliente fraca | Quem souber o número do pedido e o e-mail ou telefone de outra pessoa vê situação, itens, valor e primeiro nome dela. Telefone digitado com +55 não casa e cai em "não localizei" | OTP por e-mail ou, em produção, identificação pelo número de WhatsApp verificado, sem pedir contato na conversa |
+| Verificação de cliente fraca | Quem souber o número do pedido e o e-mail ou telefone de outra pessoa vê situação, itens, valor, forma de pagamento, rastreio, cidade de entrega e primeiro nome dela. Telefone digitado com +55 não casa e cai em "não localizei" | OTP por e-mail ou, em produção, identificação pelo número de WhatsApp verificado, sem pedir contato na conversa |
 | Reclamação sem registro persistente | A Lia diz que a reclamação será registrada e encaminhada com retorno em 24 horas úteis, como manda o manual, mas nada é gravado nem enviado. O cliente recebe uma promessa que nenhum sistema cumpre | Ferramenta de escrita que grave a reclamação e avise o responsável, com o protocolo na resposta |
 | Sem handoff real | Pedir atendente devolve WhatsApp e horário. O cliente repete tudo para a equipe, que não recebe contexto | Enviar à equipe um resumo da conversa no momento do encaminhamento |
 | Valores em R$ verificados só em teste | Um preço errado do modelo chega ao cliente, porque nada confere a resposta em tempo de execução | Rodar a checagem de `tests/money_grounding.py` dentro de `reply` e trocar a resposta por contingência quando falhar |
-| Histórico perdido no reload e no reinício do servidor | Recarregar a página apaga a conversa, e o cliente repete número do pedido e contato. Se o servidor reiniciar com a página aberta, as bolhas continuam na tela, mas a mensagem seguinte recomeça a conversa | Tabela de mensagens por cliente verificado, com retenção definida. Depende da verificação |
+| Histórico perdido no reload, no reinício do servidor e em queda maior que 120 s | Recarregar a página apaga a conversa, e o cliente repete número do pedido e contato. Se o servidor reiniciar com a página aberta, as bolhas continuam na tela, mas a mensagem seguinte recomeça a conversa. O mesmo ocorre depois de mais de 120 s sem conexão (`server.disconnectedSessionTTL`), e uma mensagem em espera se perde | Tabela de mensagens por cliente verificado, com retenção definida. Depende da verificação |
 | Sem streaming | A resposta aparece inteira de uma vez. Na espera há só o indicador de digitação e o campo bloqueado, e a espera soma cada rodada de ferramenta | Streaming do SDK na bolha, com o indicador só até o primeiro texto |
+| Chamada repetida na queda durante a espera | Se a conexão cair enquanto a Lia responde, a mensagem é processada de novo quando a conexão volta. Não há bolha duplicada, mas o modelo é pago duas vezes e, com ferramentas, as consultas de leitura se repetem. A sobreposição das duas chamadas não está descartada. Cada turno também executa o script uma vez a mais | Guardar a resposta em andamento fora da execução e reaproveitá-la na reconexão |
 | Sem feriados | Em feriado de dia útil a Lia informa o horário normal, e prazos em dias úteis não são calculados | Calendário de feriados de Campo Grande em `get_store_info` |
 | Catálogo em memória | SQLite carregado dos CSVs uma vez por processo: mudança de preço ou estoque só aparece depois de reiniciar, e pedido nenhum muda de situação | Trocar a origem por um banco da loja mantendo as assinaturas das ferramentas |
 | Limite fixo de saída | `MAX_OUTPUT_TOKENS = 1024` inclui o raciocínio. Se estourar, o cliente vê "Essa resposta ficou longa demais" e precisa perguntar de novo | Medir o consumo real por tipo de resposta e ajustar o limite |
 | Sem métricas de uso | O log registra só nome da ferramenta e erro. Custo e latência por conversa são desconhecidos | Registrar `usage` e tempo por turno, sem dados pessoais |
-| Strings fixas do Streamlit | Leitor de tela anuncia "Chat message from user" e "Chat message from assistant" em inglês em cada bolha, porque não há parâmetro para trocar. Uma queda de conexão antes da primeira execução do script ainda mostra o diálogo nativo em inglês | Estender `ui/focus.js`, que já traduz o botão de envio, o link de pular conteúdo e o diálogo de conexão |
+| Sem avaliação do modelo em CI | Regressão de prompt só aparece para quem roda `uv run pytest -m live` à mão, com chave | Rodar a suíte ao vivo em CI a cada mudança de prompt, com orçamento definido |
+| Strings fixas do Streamlit | Leitor de tela anuncia "Chat message from user" e "Chat message from assistant" em inglês em cada bolha, porque não há parâmetro para trocar. Com a conexão bloqueada desde a carga, a tela fica em branco, sem diálogo, com o título "Streamlit" na aba, porque o script do app ainda não rodou | Estender `ui/focus.js`, que já traduz o botão de envio, o link de pular conteúdo e o diálogo de conexão, às bolhas. A tela em branco vem do HTML inicial do Streamlit, fora do alcance desse script |
 | Dependência de seletores da versão 1.66.1 | `ui/styles.css` depende de `data-testid`, do div interno sem identificador do composer e da caixa anônima do diálogo de conexão. Por isso `pyproject.toml` fixa `streamlit==1.66.1`, e atualizar o Streamlit pode quebrar o layout sem erro | Comparar screenshots em CI a cada atualização |
+| Flash branco no primeiro carregamento no escuro | O tema e `ui/styles.css` chegam depois da primeira pintura. Em localhost, 2 de 3 cargas mostraram branco, por 83 e 183 ms; com 300 ms de latência e 200 KB/s, o branco durou cerca de 12 s | Investigar como servir a cor de fundo já no HTML inicial |
 
 ## Uso de assistentes de IA
 
-O código, os testes e este README foram escritos por agentes do Claude Code. A pessoa dona do projeto decidiu antes de qualquer código e não abriu essas decisões para os agentes: a arquitetura (function calling com ferramentas fechadas, SQLite carregado dos CSVs, políticas por seção sem vector store, loop manual, Streamlit, Claude como modelo), as regras de código e de texto, e a proibição de push.
+O código, os testes e este README foram escritos por agentes do Claude Code. A pessoa dona do projeto definiu a arquitetura (function calling com ferramentas fechadas, SQLite carregado dos CSVs, políticas por seção sem vector store, loop manual, Streamlit, Claude como modelo), os critérios de aprovação e o processo.
 
 O workflow teve um Claude Code orquestrando etapas com agentes separados:
 
@@ -248,7 +270,15 @@ O que foi rejeitado ou corrigido por causa dos validadores:
 
 Verificação: ruff, mypy e pytest passando, além de clone limpo e medições no navegador. Os comandos deste texto foram rerodados e as afirmações conferidas contra o código.
 
-Limites do método: os validadores também são agentes, e as rodadas de validação rodaram sem chave de API, com leitura do prompt, simulação de respostas e agente falso na interface. Dados, ferramentas e agente tiveram três rodadas de validadores; a interface teve duas, seguidas de passes de correção medidos pelos próprios escritores. As correções da última rodada não passaram por novo validador isolado. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
+<!-- REVISAO-HUMANA -->
+
+O histórico local foi reorganizado antes do primeiro push para corrigir mensagens, corrigir o typecheck dos primeiros commits e dividir commits grandes, sem mudar a árvore final.
+
+Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e agente falso na interface. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
+
+Rodadas de validação até agora, todas sem chave: dados, ferramentas e agente com 4; interface com 3 concluídas e a 4a em andamento.
+
+As correções feitas depois da quarta rodada de dados, ferramentas e agente ainda não passaram por novo validador isolado.
 
 ## Conversas de exemplo
 
