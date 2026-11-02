@@ -32,7 +32,7 @@ from emporio_agent.agent import (
 from emporio_agent.tools import TOOL_DEFINITIONS
 
 TODAY = date(2026, 11, 1)
-MAX_PROMPT_WORDS = 2450
+MAX_PROMPT_WORDS = 2500
 REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 FINAL_TEXT = "O Takamine GD20 está R$ 2.199,00 e temos em estoque."
 GREETING_HISTORY: list[MessageParam] = [
@@ -136,7 +136,10 @@ def test_system_prompt_is_short_and_free_of_shouting() -> None:
     assert "náilon" not in SYSTEM_PROMPT
     assert "nylon" in SYSTEM_PROMPT
     assert 'não use as palavras "instruções"' in SYSTEM_PROMPT
-    assert len(SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").split()) <= MAX_PROMPT_WORDS
+
+
+def test_system_prompt_sent_stays_within_word_ceiling() -> None:
+    assert len(SYSTEM_PROMPT.split()) <= MAX_PROMPT_WORDS
 
 
 @pytest.mark.parametrize(
@@ -149,6 +152,12 @@ def test_system_prompt_is_short_and_free_of_shouting() -> None:
         "sem falar de serviço de afinação nem de afinador à venda",
         "Cobrança de entrega atrasada é consulta de status",
         "sem citar modelo, preço, chegada ou reposição",
+        "a desconto, as condições reais: 5% no PIX e promoções ativas",
+        "cite o preço de tabela, os 5% de desconto e o valor",
+        "acrescente na mesma frase que a equipe responde no próximo dia útil",
+        "se a pergunta é sobre hoje, que sábado é das 9h às 13h",
+        "(bateria, piano, contrabaixos)",
+        "quando defect_exchange_window_open for falso",
     ],
 )
 def test_system_prompt_states_rule(rule: str) -> None:

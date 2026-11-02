@@ -751,10 +751,11 @@ def get_order_status(
     if customer_email is None and customer_phone is None:
         raise ValueError("customer_email or customer_phone is required to look up an order")
     email = normalized_email(customer_email)
+    phone = phone_digits(customer_phone)
     shared_email = email_is_shared(email)
-    if shared_email and customer_phone is None:
+    if shared_email and not phone:
         return AMBIGUOUS_CONTACT
-    parameters = (order_id, None if shared_email else email, phone_digits(customer_phone))
+    parameters = (order_id, None if shared_email else email, phone)
     row = catalog_connection().execute(ORDER_BY_ID_AND_CONTACT_SQL, parameters).fetchone()
     if row is None:
         return ORDER_NOT_FOUND

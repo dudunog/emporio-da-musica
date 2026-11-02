@@ -48,6 +48,11 @@ def test_shared_email_requires_phone() -> None:
     assert "telefone" in AMBIGUOUS_CONTACT.message
 
 
+@pytest.mark.parametrize("blank_phone", ["", "   ", "sem telefone"])
+def test_shared_email_with_blank_phone_requires_phone(blank_phone: str) -> None:
+    assert get_order_status(10, SHARED_EMAIL, blank_phone, TODAY) == AMBIGUOUS_CONTACT
+
+
 def test_shared_email_with_wrong_phone_is_not_found() -> None:
     assert get_order_status(10, SHARED_EMAIL, BRUNO_MARTINS_PHONE, TODAY) == ORDER_NOT_FOUND
 
