@@ -6,7 +6,11 @@
   const COMPOSER_SELECTOR = 'textarea[data-testid="stChatInputTextArea"]';
   const SEND_BUTTON_SELECTOR = '[data-testid="stChatInputSubmitButton"]';
   const SKIP_LINK_SELECTOR = '[data-testid="stSkipToContent"]';
-  const CONNECTION_DIALOG_TITLE_SELECTOR = '[data-testid="stDialog"] h2';
+  const CONNECTION_DIALOG_SELECTOR = '[data-testid="stDialog"]';
+  const CONNECTION_DIALOG_TITLE_SELECTOR = `${CONNECTION_DIALOG_SELECTOR} h2`;
+  const RESEND_SELECTOR = ".st-key-resend";
+  const MAIN_SELECTOR = ".stMain";
+  const DIALOG_DISMISS_EVENTS = ["keydown", "pointerdown", "pointerup", "mousedown", "mouseup", "click", "touchstart", "touchend"];
   const POLL_INTERVAL_MS = 100;
   const MAX_ATTEMPTS = 600;
   const root = document.documentElement;
@@ -14,7 +18,14 @@
   root.lang = "pt-BR";
   root.dataset.composerRun = RUN_NONCE;
 
+  const revealResendButton = () => {
+    if (!document.querySelector(RESEND_SELECTOR)) return;
+    const main = document.querySelector(MAIN_SELECTOR);
+    main.scrollTop = main.scrollHeight;
+  };
+
   const focusComposerWhenReady = () => {
+    revealResendButton();
     const startedRun = root.dataset.composerRun;
     let attempts = 0;
     const timer = setInterval(() => {
@@ -49,9 +60,15 @@
     connectionDialogOpen = Boolean(dialogTitle);
   };
 
+  const keepConnectionDialogOpen = (event) => {
+    const dismisses = event.type !== "keydown" || event.key === "Escape";
+    if (dismisses && document.querySelector(CONNECTION_DIALOG_SELECTOR)) event.stopImmediatePropagation();
+  };
+
   if (!root.dataset.nativeTextsObserved) {
     root.dataset.nativeTextsObserved = "true";
     localizeNativeTexts();
+    DIALOG_DISMISS_EVENTS.forEach((eventName) => window.addEventListener(eventName, keepConnectionDialogOpen, true));
     new MutationObserver(localizeNativeTexts).observe(document.body, {
       subtree: true,
       childList: true,

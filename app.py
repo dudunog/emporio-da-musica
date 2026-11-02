@@ -27,13 +27,12 @@ TYPING_INDICATOR_LABEL = "Lia está digitando"
 RETRY_BUTTON_LABEL = "Tentar de novo"
 SEND_BUTTON_LABEL = "Enviar mensagem"
 SKIP_LINK_LABEL = "Ir para o conteúdo"
+SERVICE_UNAVAILABLE_MESSAGE = (
+    "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos."
+)
 ERROR_MESSAGES: dict[UnavailableReason, str] = {
-    "authentication": (
-        "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos."
-    ),
-    "server": (
-        "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos."
-    ),
+    "authentication": SERVICE_UNAVAILABLE_MESSAGE,
+    "server": SERVICE_UNAVAILABLE_MESSAGE,
     "connection": "Sem conexão agora. Verifique sua internet e tente de novo.",
     "rate_limit": "Estamos com muitas conversas agora. Tente de novo em instantes.",
 }
@@ -51,7 +50,7 @@ AVATAR_PATH = APP_DIR / "ui" / "avatar.svg"
 AVATARS: dict[str, str | None] = {"assistant": str(AVATAR_PATH), "user": None}
 HISTORY_KEY = "history"
 TRANSCRIPT_KEY = "transcript"
-RETRY_MESSAGE_KEY = "retry_message"
+PENDING_MESSAGE_KEY = "pending_message"
 RUN_COUNTER_KEY = "run_counter"
 RETRY_CONTAINER_KEY = "resend"
 RETRY_BUTTON_KEY = "resend_button"
@@ -174,15 +173,17 @@ def request_retry() -> None:
     if not transcript or transcript[-1]["kind"] != "error":
         return
     transcript.pop()
-    st.session_state[RETRY_MESSAGE_KEY] = transcript[-1]["text"]
+    st.session_state[PENDING_MESSAGE_KEY] = transcript[-1]["text"]
 
 
 def render_error_bubble(text: str, show_retry: bool) -> None:
-    st.html(ERROR_BUBBLE_TEMPLATE.format(text=text))
-    if not show_retry:
-        return
-    with st.container(key=RETRY_CONTAINER_KEY):
-        st.button(RETRY_BUTTON_LABEL, key=RETRY_BUTTON_KEY, on_click=request_retry)
+    with st.container():
+        st.html(ERROR_BUBBLE_TEMPLATE.format(text=text))
+        if not show_retry:
+            st.empty()
+            return
+        with st.container(key=RETRY_CONTAINER_KEY):
+            st.button(RETRY_BUTTON_LABEL, key=RETRY_BUTTON_KEY, on_click=request_retry)
 
 
 def render_bubble(bubble: Bubble, show_retry: bool) -> None:
@@ -201,18 +202,20 @@ def render_transcript() -> None:
 
 
 def take_pending_message() -> str | None:
-    retry_message: str | None = st.session_state.get(RETRY_MESSAGE_KEY)
+    pending_message: str | None = st.session_state.get(PENDING_MESSAGE_KEY)
     prompt = st.chat_input(
         placeholder=COMPOSER_PLACEHOLDER,
         submit_mode="disable",
-        disabled=retry_message is not None,
+        disabled=pending_message is not None,
     )
-    if retry_message is not None:
-        return retry_message
-    if isinstance(prompt, str) and prompt.strip():
-        conversation_transcript().append({"role": "user", "text": prompt, "kind": "message"})
-        return prompt
-    return None
+    if pending_message is not None:
+        return pending_message
+    message = prompt.strip() if isinstance(prompt, str) else ""
+    if not message:
+        return None
+    conversation_transcript().append({"role": "user", "text": message, "kind": "message"})
+    st.session_state[PENDING_MESSAGE_KEY] = message
+    return message
 
 
 def record_reply(agent_reply: AgentReply) -> None:
@@ -229,9 +232,9 @@ def record_reply(agent_reply: AgentReply) -> None:
 def show_unavailable(placeholder: DeltaGenerator, reason: UnavailableReason) -> None:
     LOGGER.error("Agent unavailable (reason=%s): %s", reason, UNAVAILABLE_LOG_HINTS[reason])
     text = ERROR_MESSAGES[reason]
-    conversation_transcript().append({"role": "assistant", "text": text, "kind": "error"})
     with placeholder.container():
         render_error_bubble(text, show_retry=True)
+    conversation_transcript().append({"role": "assistant", "text": text, "kind": "error"})
 
 
 def answer(user_message: str) -> None:
@@ -244,13 +247,17 @@ def answer(user_message: str) -> None:
         except AgentUnavailableError as unavailable_error:
             show_unavailable(placeholder, unavailable_error.reason)
             return
+        except Exception:
+            LOGGER.exception("Unexpected failure while answering")
+            show_unavailable(placeholder, "server")
+            return
         placeholder.markdown(as_markdown(agent_reply.text))
     record_reply(agent_reply)
 
 
-def release_composer_after_retry() -> None:
-    if st.session_state.pop(RETRY_MESSAGE_KEY, None) is not None:
-        st.rerun()
+def finish_pending_message() -> None:
+    del st.session_state[PENDING_MESSAGE_KEY]
+    st.rerun()
 
 
 def main() -> None:
@@ -267,7 +274,7 @@ def main() -> None:
     render_transcript()
     if pending_message is not None:
         answer(pending_message)
-        release_composer_after_retry()
+        finish_pending_message()
     focus_composer()
 
 

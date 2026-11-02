@@ -70,6 +70,8 @@
 .stMainBlockContainer { padding-top: 0; padding-bottom: var(--space-4); }
 .stMainBlockContainer > [data-testid="stVerticalBlock"] { gap: var(--space-4); }
 [data-testid="stBottom"] > div { background: var(--bg); }
+.stMain { scrollbar-gutter: stable; }
+main.stMain:focus-visible::before { top: var(--header-height); height: calc(100vh - var(--header-height)); margin-bottom: calc(var(--header-height) - 100vh); box-shadow: inset 0 0 0 2px var(--focus); }
 [data-testid="stBottomBlockContainer"] {
   padding-top: var(--space-2);
   padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
@@ -77,10 +79,10 @@
 
 /* Dialogo de conexao: fora de .stApp (sem tokens). So o titulo, em pt-BR via focus.js, sem corpo nem botoes nativos */
 [data-testid="stDialog"] { align-items: center; background: rgb(0 0 0 / 0.4); }
-[data-testid="stDialog"] > div { border-radius: 18px; }
+[data-testid="stDialog"] > div { border-radius: 18px; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); box-shadow: none; }
 [data-testid="stDialog"] button,
 [data-testid="stDialog"] h2 ~ div { display: none; }
-[data-testid="stDialog"] h2 { margin: 0; padding: 16px; font-size: 16px; line-height: 24px; font-weight: 500; }
+[data-testid="stDialog"] h2 { margin: 0; padding: 16px; font-family: Inter, system-ui, sans-serif; font-size: 16px; line-height: 24px; font-weight: 500; }
 
 /* Cabecalho: faixa de largura total, fixa ao rolar; a sombra e o border-image estendem fundo e fio sem overflow */
 [data-testid="stElementContainer"]:has(> .stHtml > .store-header) { position: sticky; top: 0; z-index: 1; }
@@ -152,8 +154,7 @@
 }
 .customer-text { white-space: pre-wrap; }
 
-/* Composer: a caixa visual e o div anonimo filho de stChatInput (versao 1.66.1). Em varias linhas o botao fica
-   embaixo a direita; a margem de 4px centra a ultima linha no botao e mantem a coluna de texto constante */
+/* Composer: caixa visual no div anonimo de stChatInput (versao 1.66.1); botao embaixo a direita, ultima linha no eixo dele */
 [data-testid="stChatInput"] > div {
   border-radius: var(--radius-pill);
   background: var(--surface);
@@ -173,7 +174,7 @@
   line-height: 24px;
   color: var(--text);
 }
-[data-testid="stChatInputTextArea"]::placeholder { color: var(--text-placeholder); }
+[data-testid="stChatInputTextArea"]::placeholder { color: var(--text-placeholder); -webkit-text-fill-color: var(--text-placeholder); }
 [data-testid="stChatInputSubmitButton"] {
   position: relative;
   width: var(--control-size);

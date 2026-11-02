@@ -24,6 +24,7 @@ UI_TEXT_CONSTANT_NAMES = (
     "RETRY_BUTTON_LABEL",
     "SEND_BUTTON_LABEL",
     "SKIP_LINK_LABEL",
+    "SERVICE_UNAVAILABLE_MESSAGE",
     "ERROR_MESSAGES",
 )
 EXPECTED_TEXTS = {
@@ -35,6 +36,9 @@ EXPECTED_TEXTS = {
     "RETRY_BUTTON_LABEL": "Tentar de novo",
     "SEND_BUTTON_LABEL": "Enviar mensagem",
     "SKIP_LINK_LABEL": "Ir para o conteúdo",
+    "SERVICE_UNAVAILABLE_MESSAGE": (
+        "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos."
+    ),
     "ERROR_MESSAGES.authentication": (
         "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos."
     ),
@@ -112,11 +116,13 @@ def whole_word(term: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){re.escape(term)}(?!\w)", re.IGNORECASE)
 
 
-def string_values(node: ast.expr) -> list[str]:
+def string_values(node: ast.expr, constants: dict[str, str]) -> list[str]:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return [node.value]
+    if isinstance(node, ast.Name) and node.id in constants:
+        return [constants[node.id]]
     if isinstance(node, ast.Dict):
-        return [text for value in node.values if value for text in string_values(value)]
+        return [text for value in node.values if value for text in string_values(value, constants)]
     return []
 
 
@@ -135,13 +141,13 @@ def assigned_value(node: ast.stmt) -> ast.expr | None:
     return None
 
 
-def dict_entries(node: ast.expr) -> dict[str, str]:
+def dict_entries(node: ast.expr, constants: dict[str, str]) -> dict[str, str]:
     if not isinstance(node, ast.Dict):
         return {}
     entries: dict[str, str] = {}
     for key, value in zip(node.keys, node.values, strict=True):
         if isinstance(key, ast.Constant) and isinstance(key.value, str):
-            for text in string_values(value):
+            for text in string_values(value, constants):
                 entries[key.value] = text
     return entries
 
@@ -150,16 +156,26 @@ def load_app_module() -> ast.Module:
     return ast.parse(APP_PATH.read_text(encoding="utf-8"))
 
 
+def string_constants_in_app() -> dict[str, str]:
+    constants: dict[str, str] = {}
+    for node in load_app_module().body:
+        name = assigned_name(node)
+        value = assigned_value(node)
+        if name and isinstance(value, ast.Constant) and isinstance(value.value, str):
+            constants[name] = value.value
+    return constants
+
+
 def ui_texts_from_app() -> dict[str, str]:
-    texts: dict[str, str] = {}
+    constants = string_constants_in_app()
+    texts = {name: text for name, text in constants.items() if name in UI_TEXT_CONSTANT_NAMES}
     for node in load_app_module().body:
         name = assigned_name(node)
         value = assigned_value(node)
         if name not in UI_TEXT_CONSTANT_NAMES or value is None:
             continue
-        texts.update({f"{name}.{key}": text for key, text in dict_entries(value).items()})
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            texts[name] = value.value
+        entries = dict_entries(value, constants)
+        texts.update({f"{name}.{key}": text for key, text in entries.items()})
     return texts
 
 
@@ -183,6 +199,11 @@ def accented_literals_in_app() -> dict[str, str]:
 
 def test_ui_texts_match_the_contract() -> None:
     assert contract_ui_texts() == EXPECTED_TEXTS
+
+
+def test_service_unavailable_phrase_has_one_definition() -> None:
+    source = APP_PATH.read_text(encoding="utf-8")
+    assert source.count(EXPECTED_TEXTS["SERVICE_UNAVAILABLE_MESSAGE"]) == 1
 
 
 @pytest.mark.parametrize("term", FORBIDDEN_TERMS)
