@@ -4,6 +4,7 @@ from collections.abc import Callable, Collection
 from dataclasses import asdict, dataclass
 from datetime import date
 from decimal import Decimal
+from typing import TypedDict
 
 from emporio_agent.catalog import (
     CATEGORY_IDS,
@@ -27,23 +28,32 @@ LIST_ACTIVE_PROMOTIONS_TOOL = "list_active_promotions"
 GET_STORE_INFO_TOOL = "get_store_info"
 GET_POLICY_TOOL = "get_policy"
 
+
+class ToolDefinition(TypedDict):
+    name: str
+    description: str
+    strict: bool
+    input_schema: dict[str, object]
+
+
 OPTIONAL_STRING_SCHEMA: dict[str, object] = {"type": ["string", "null"]}
 OPTIONAL_NUMBER_SCHEMA: dict[str, object] = {"type": ["number", "null"]}
-TOOL_DEFINITIONS: list[dict[str, object]] = [
+TOOL_DEFINITIONS: list[ToolDefinition] = [
     {
         "name": SEARCH_PRODUCTS_TOOL,
         "description": (
-            "Search the catalog by product name, category and/or list-price range in BRL; at "
-            "least one filter is required, and the product_id used by get_product comes from "
-            "these results. name_contains is matched word by word, ignoring accents and case, "
-            "against the product name plus its category name, so pass only the brand and the "
-            "model code ('Takamine GD20', 'F310'), never a whole sentence; when it returns "
-            "nothing, retry with fewer words before concluding the product does not exist. "
-            "Each result already carries availability, list price, promotional price, discount "
-            "percent and string type, enough for a plain price, stock or options question. With "
-            "name_contains, discontinued and coming-soon products are included so their status "
-            "can be explained; with category or price only, discontinued products are omitted "
-            "but out-of-stock ones still appear marked."
+            "Search the catalog by product name, category and/or list-price range in BRL (at "
+            "least one filter); the product_id used by get_product comes from these results. "
+            "name_contains is matched word by word, ignoring accents, case and hyphens, against "
+            "the product name plus its category name, so pass only the brand and the model code "
+            "('Takamine GD20', 'F310'), never a whole sentence; when it returns nothing, retry "
+            "with fewer words before concluding the product does not exist. When the customer "
+            "names only an instrument type (saxofone, violino, bateria), search by category "
+            "instead of by name; each result already carries availability, list price, "
+            "promotional price, discount percent and string type, enough for a plain price, "
+            "stock or options question. With name_contains, discontinued and coming-soon "
+            "products are included so their status can be explained; with category or price "
+            "only, discontinued products are omitted but out-of-stock ones still appear marked."
         ),
         "strict": True,
         "input_schema": {
@@ -60,10 +70,12 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
                     "type": ["string", "null"],
                     "enum": [*CATEGORY_IDS, None],
                     "description": (
-                        "Catalog category slug: violões = violoes, ukuleles, guitarras, baixos, "
-                        "teclados e pianos = teclados_pianos, baterias e percussão = "
-                        "baterias_percussao, sopro de madeira = sopro_madeiras, sopro de metal = "
-                        "sopro_metais, cordas orquestrais = cordas_orquestrais."
+                        "Catalog category slug: violão = violoes; ukulele = ukuleles; guitarra = "
+                        "guitarras; baixo = baixos; teclado, piano, sintetizador, controlador = "
+                        "teclados_pianos; bateria, percussão = baterias_percussao; saxofone, "
+                        "clarinete, flauta, oboé = sopro_madeiras; trompete, trombone, tuba, "
+                        "trompa = sopro_metais; violino, viola, violoncelo, contrabaixo acústico "
+                        "= cordas_orquestrais."
                     ),
                 },
                 "min_price_brl": {
@@ -84,8 +96,9 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
         "description": (
             "Return the full details of one product by product_id, taken from a search_products "
             "result: description, selected specs, availability, list price, active promotion, "
-            "PIX price with its note, best cash price and installment plan, all amounts already "
-            "formatted in BRL. Call it when the customer asks for PIX price, installments, "
+            "PIX price with its note, best cash price, installment plan and the installment "
+            "rule with its minimum amounts, all amounts already formatted in BRL. Call it when "
+            "the customer asks for PIX price, installments, "
             "promotion details, description or specs; a plain price or stock question is already "
             "answered by search_products. Discontinued products come without prices. Returns "
             "null when the product_id does not exist."
@@ -113,7 +126,8 @@ TOOL_DEFINITIONS: list[dict[str, object]] = [
             "quote. When found is false, reason is not_found (order number or contact do not "
             "match: ask the customer to check both, never say which one failed) or "
             "ambiguous_contact (the e-mail belongs to more than one customer: ask for the "
-            "registered phone and call again with it)."
+            "registered phone and call again with it). For delivered orders received_on is the "
+            "delivery date on record and prevails over the date the customer states."
         ),
         "strict": True,
         "input_schema": {

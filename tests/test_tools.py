@@ -94,6 +94,8 @@ def test_get_product_tool() -> None:
     assert payload["pix_price_brl"] == "R$ 2.089,05"
     assert payload["installment_value_brl"] == "R$ 183,25"
     assert payload["max_installments"] == 12
+    assert "R$ 100,00" in str(payload["installment_rule_note"])
+    assert "R$ 80,00" in str(payload["installment_rule_note"])
     assert payload["promotion"] is None
     assert payload["availability"] == "in_stock"
 
@@ -181,23 +183,23 @@ def test_tool_definitions_are_strict() -> None:
     for definition in TOOL_DEFINITIONS:
         assert definition["strict"] is True
         input_schema = definition["input_schema"]
-        assert isinstance(input_schema, dict)
         assert input_schema["type"] == "object"
         assert input_schema["additionalProperties"] is False
         properties = input_schema["properties"]
-        assert isinstance(properties, dict)
-        assert sorted(input_schema["required"]) == sorted(properties)
+        required = input_schema["required"]
+        assert isinstance(properties, dict) and isinstance(required, list)
+        assert sorted(required) == sorted(properties)
 
 
 def test_tool_definitions_use_enums_and_short_descriptions() -> None:
-    definitions = {str(definition["name"]): definition for definition in TOOL_DEFINITIONS}
-    search_schema = definitions["search_products"]["input_schema"]
-    policy_schema = definitions["get_policy"]["input_schema"]
-    assert isinstance(search_schema, dict) and isinstance(policy_schema, dict)
-    assert search_schema["properties"]["category"]["enum"] == [*CATEGORY_IDS, None]
-    assert policy_schema["properties"]["topic"]["enum"] == list(POLICY_TOPICS)
+    definitions = {definition["name"]: definition for definition in TOOL_DEFINITIONS}
+    search_properties = definitions["search_products"]["input_schema"]["properties"]
+    policy_properties = definitions["get_policy"]["input_schema"]["properties"]
+    assert isinstance(search_properties, dict) and isinstance(policy_properties, dict)
+    assert search_properties["category"]["enum"] == [*CATEGORY_IDS, None]
+    assert policy_properties["topic"]["enum"] == list(POLICY_TOPICS)
     for definition in TOOL_DEFINITIONS:
-        description = str(definition["description"])
+        description = definition["description"]
         sentences = [sentence for sentence in SENTENCE_SPLIT_PATTERN.split(description) if sentence]
         assert 1 <= len(sentences) <= 4, definition["name"]
 

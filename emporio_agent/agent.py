@@ -19,6 +19,7 @@ from anthropic.types import (
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from dotenv import load_dotenv
 
+from emporio_agent.catalog import STORE_INFO
 from emporio_agent.tools import TOOL_DEFINITIONS, dispatch_tool
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -29,10 +30,13 @@ MAX_OUTPUT_TOKENS = 1024
 OUTPUT_CONFIG: OutputConfigParam = {"effort": "low"}
 SYSTEM_PROMPT_PATH = Path(__file__).parent / "system-prompt.md"
 DOTENV_PATH = Path(__file__).parent.parent / ".env"
-SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 GREETING = (
     "Oi! Eu sou a Lia, atendimento virtual da Empório da Música. "
     "Posso ajudar com produtos, preços, pedidos, trocas e informações da loja."
+)
+GREETING_PLACEHOLDER = "[[saudacao]]"
+SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").replace(
+    GREETING_PLACEHOLDER, GREETING
 )
 TODAY_SECTION_TITLE = "Data de hoje"
 TODAY_TEMPLATE = (
@@ -50,21 +54,24 @@ WEEKDAY_NAMES_PT_BR = {
 }
 TOO_MANY_TOOL_ROUNDS_FALLBACK = (
     "Não consegui concluir essa consulta agora. Pode tentar de novo em instantes "
-    "ou falar com a loja pelo WhatsApp."
+    f"ou falar com a loja pelo WhatsApp {STORE_INFO.whatsapp}."
 )
 REFUSAL_FALLBACK = (
-    "Isso eu não consigo ajudar por aqui. Posso ajudar com instrumentos, pedidos "
+    "Não consigo ajudar com isso por aqui. Posso falar sobre instrumentos, pedidos "
     "e dúvidas sobre a loja."
 )
 TRUNCATED_REPLY_FALLBACK = (
-    "Minha resposta ficou longa demais e foi cortada. Pode perguntar de novo, "
-    "de um jeito mais específico?"
+    "Essa resposta ficou longa demais. Pode perguntar de um jeito mais específico?"
+)
+CONTEXT_WINDOW_FALLBACK = (
+    "Nossa conversa ficou longa demais para eu acompanhar. Pode recarregar a página "
+    "e me contar de novo o que precisa?"
 )
 EMPTY_REPLY_FALLBACK = "Não entendi bem. Pode repetir de outro jeito?"
 STOP_REASON_FALLBACKS: dict[str, str] = {
     "refusal": REFUSAL_FALLBACK,
     "max_tokens": TRUNCATED_REPLY_FALLBACK,
-    "model_context_window_exceeded": TRUNCATED_REPLY_FALLBACK,
+    "model_context_window_exceeded": CONTEXT_WINDOW_FALLBACK,
 }
 UnavailableReason = Literal["authentication", "connection", "rate_limit", "server"]
 SDK_ERROR_REASONS: tuple[tuple[type[anthropic.APIError], UnavailableReason], ...] = (
@@ -131,18 +138,15 @@ def build_system_prompt(today: date) -> list[TextBlockParam]:
     ]
 
 
-def as_tool_param(definition: dict[str, object]) -> ToolParam:
-    name = definition.get("name")
-    description = definition.get("description")
-    input_schema = definition.get("input_schema")
-    if not (isinstance(name, str) and isinstance(description, str)):
-        raise TypeError(f"Tool definition needs string name and description: {definition!r}")
-    if not isinstance(input_schema, dict):
-        raise TypeError(f"Tool definition needs an input_schema object: {definition!r}")
-    return {"name": name, "description": description, "input_schema": input_schema, "strict": True}
-
-
-TOOL_PARAMS: list[ToolParam] = [as_tool_param(definition) for definition in TOOL_DEFINITIONS]
+TOOL_PARAMS: list[ToolParam] = [
+    {
+        "name": definition["name"],
+        "description": definition["description"],
+        "input_schema": definition["input_schema"],
+        "strict": definition["strict"],
+    }
+    for definition in TOOL_DEFINITIONS
+]
 
 
 def unavailable_reason(api_error: anthropic.APIError) -> UnavailableReason:

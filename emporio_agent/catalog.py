@@ -41,6 +41,7 @@ class PriceQuote(TypedDict):
     max_installments: int | None
     installment_value_brl: Decimal | None
     installment_note: str | None
+    installment_rule_note: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ class ProductDetail:
     max_installments: int | None
     installment_value_brl: Decimal | None
     installment_note: str | None
+    installment_rule_note: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +174,7 @@ WITHDRAWAL_WINDOW_DAYS = 7
 DEFECT_EXCHANGE_WINDOW_DAYS = 30
 SETTLED_ORDER_STATUSES = frozenset({"delivered", "cancelled"})
 SEARCH_STOPWORDS = frozenset({"de", "do", "da", "o", "a", "e", "com", "para"})
+SEARCH_IGNORED_CHARACTERS = str.maketrans("", "", "-")
 MIN_SEARCH_TOKEN_LENGTH = 2
 PLURAL_SUFFIXES: dict[str, str] = {"oes": "ao", "s": ""}
 
@@ -181,6 +184,9 @@ PIX_NOTE_PROMOTIONAL = (
     "à vista no PIX paga o preço promocional."
 )
 INSTALLMENT_NOTE = "sem juros no cartão de crédito"
+INSTALLMENT_RULE_NOTE = (
+    "até 12x sem juros no cartão; parcela mínima de R$ 80,00 de 4x a 6x e de R$ 100,00 de 7x a 12x"
+)
 NO_PRICE_QUOTE: PriceQuote = {
     "list_price_brl": None,
     "promotion": None,
@@ -191,6 +197,7 @@ NO_PRICE_QUOTE: PriceQuote = {
     "max_installments": None,
     "installment_value_brl": None,
     "installment_note": None,
+    "installment_rule_note": None,
 }
 
 CATEGORY_IDS: dict[ProductCategory, int] = {
@@ -456,7 +463,8 @@ def normalize_search_text(text: str) -> str:
     stripped = "".join(
         character for character in decomposed if not unicodedata.combining(character)
     )
-    return " ".join(singular_word(word) for word in stripped.lower().split())
+    simplified = stripped.lower().translate(SEARCH_IGNORED_CHARACTERS)
+    return " ".join(singular_word(word) for word in simplified.split())
 
 
 def load_catalog(data_dir: Path) -> sqlite3.Connection:
@@ -534,6 +542,7 @@ def price_quote(list_price: Decimal, promotion: Promotion | None) -> PriceQuote:
         "max_installments": max_installments,
         "installment_value_brl": installment_value,
         "installment_note": INSTALLMENT_NOTE,
+        "installment_rule_note": INSTALLMENT_RULE_NOTE,
     }
 
 

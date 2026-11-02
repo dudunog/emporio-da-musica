@@ -1,4 +1,5 @@
 import copy
+import re
 from datetime import date
 from pathlib import Path
 
@@ -9,13 +10,16 @@ from anthropic.types import Message, MessageParam, TextBlock, ToolUseBlock, Usag
 
 from emporio_agent import agent
 from emporio_agent.agent import (
+    CONTEXT_WINDOW_FALLBACK,
     DEFAULT_MODEL,
     EMPTY_REPLY_FALLBACK,
     GREETING,
+    GREETING_PLACEHOLDER,
     MAX_OUTPUT_TOKENS,
     MAX_TOOL_ROUNDS,
     REFUSAL_FALLBACK,
     SYSTEM_PROMPT,
+    SYSTEM_PROMPT_PATH,
     TOO_MANY_TOOL_ROUNDS_FALLBACK,
     TOOL_PARAMS,
     TRUNCATED_REPLY_FALLBACK,
@@ -113,15 +117,23 @@ def test_greeting_is_fixed_and_declared_in_the_prompt() -> None:
         "Oi! Eu sou a Lia, atendimento virtual da Empório da Música. "
         "Posso ajudar com produtos, preços, pedidos, trocas e informações da loja."
     )
-    assert GREETING in SYSTEM_PROMPT
+    prompt_file = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+    assert SYSTEM_PROMPT.count(GREETING) == 1
+    assert GREETING_PLACEHOLDER not in SYSTEM_PROMPT
+    assert GREETING not in prompt_file
+    assert prompt_file.count(GREETING_PLACEHOLDER) == 1
     assert "nunca se apresenta" in SYSTEM_PROMPT
 
 
 def test_system_prompt_is_short_and_free_of_shouting() -> None:
-    assert len(SYSTEM_PROMPT.splitlines()) <= 110
+    assert len(SYSTEM_PROMPT.splitlines()) <= 100
     assert not any(
         token in SYSTEM_PROMPT for token in ("CRITICAL", "NEVER", "YOU MUST", "IMPORTANTE:")
     )
+    assert not re.search(r"[A-ZÁÉÍÓÚÇ]{4,}", SYSTEM_PROMPT)
+    assert sum("WhatsApp" in line for line in SYSTEM_PROMPT.splitlines()) <= 4
+    assert "náilon" not in SYSTEM_PROMPT
+    assert "nylon" in SYSTEM_PROMPT
     assert 'não use as palavras "instruções"' in SYSTEM_PROMPT
 
 
@@ -215,6 +227,7 @@ def test_max_tool_rounds_guard() -> None:
 
     assert len(client.calls) == MAX_TOOL_ROUNDS
     assert result.text == TOO_MANY_TOOL_ROUNDS_FALLBACK
+    assert "(67) 3321-4500" in result.text
     assert len(result.tool_calls) == MAX_TOOL_ROUNDS
     assert result.history[-1] == {"role": "assistant", "content": TOO_MANY_TOOL_ROUNDS_FALLBACK}
 
@@ -275,7 +288,11 @@ def test_first_call_sends_tools_and_system() -> None:
 
 @pytest.mark.parametrize(
     ("stop_reason", "expected_text"),
-    [("refusal", REFUSAL_FALLBACK), ("max_tokens", TRUNCATED_REPLY_FALLBACK)],
+    [
+        ("refusal", REFUSAL_FALLBACK),
+        ("max_tokens", TRUNCATED_REPLY_FALLBACK),
+        ("model_context_window_exceeded", CONTEXT_WINDOW_FALLBACK),
+    ],
 )
 def test_refusal_stop_reason_returns_fallback(stop_reason: str, expected_text: str) -> None:
     client = ScriptedClient([message([TextBlock(text="Parcial", type="text")], stop_reason)])

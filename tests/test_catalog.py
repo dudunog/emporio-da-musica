@@ -89,6 +89,16 @@ def test_search_matches_every_token_ignoring_accents_order_and_stopwords() -> No
     assert search_products("Fender", None, None, None) != []
 
 
+def test_search_ignores_hyphens_in_model_codes() -> None:
+    assert [summary.product_id for summary in search_products("Martin D28", None, None, None)] == [
+        93,
+        108,
+    ]
+    assert [summary.product_id for summary in search_products("SN7C", None, None, None)] == [113]
+    assert [summary.product_id for summary in search_products("SN-7C", None, None, None)] == [113]
+    assert search_products("-", None, None, None) == []
+
+
 def test_search_treats_like_wildcards_as_literal_characters() -> None:
     assert search_products("%", None, None, None) == []
     assert search_products("_", None, None, None) == []
@@ -186,6 +196,7 @@ def test_discontinued_product_has_no_sale_price() -> None:
     assert shelby.best_cash_price_brl is None
     assert shelby.max_installments is None
     assert shelby.installment_value_brl is None
+    assert shelby.installment_rule_note is None
 
 
 def test_discontinued_product_with_stock_is_still_discontinued() -> None:
