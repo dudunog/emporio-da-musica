@@ -28,12 +28,22 @@ def test_value_with_different_cents_fails() -> None:
         assert_money_grounded("No PIX sai por R$ 2.089,00.", [TAKAMINE_RESULT])
 
 
-def test_policy_values_pass_only_when_policy_was_consulted() -> None:
+def test_policy_constants_pass_without_tool_results() -> None:
+    final_text = (
+        "Frete grátis acima de R$ 500,00; abaixo disso a taxa é R$ 35,00. "
+        "A parcela mínima é R$ 80,00 de 4x a 6x e R$ 100,00 de 7x a 12x."
+    )
+    assert_money_grounded(final_text, [])
+    with pytest.raises(AssertionError, match=r"45\.00"):
+        assert_money_grounded("A taxa é R$ 45,00.", [])
+
+
+def test_difference_between_two_grounded_values_passes() -> None:
     shipping_policy = dispatch_tool("get_policy", {"topic": "shipping"}, TODAY).content
-    final_text = "Frete grátis acima de R$ 500,00; abaixo disso a taxa é R$ 35,00."
-    assert_money_grounded(final_text, [shipping_policy])
-    with pytest.raises(AssertionError):
-        assert_money_grounded(final_text, [])
+    assert_money_grounded("No PIX você economiza R$ 109,95.", [TAKAMINE_RESULT])
+    with pytest.raises(AssertionError, match=r"109\.00"):
+        assert_money_grounded("No PIX você economiza R$ 109,00.", [TAKAMINE_RESULT])
+    assert_money_grounded("Frete grátis acima de R$ 500,00.", [shipping_policy])
 
 
 def test_text_without_money_passes_with_no_tool_results() -> None:

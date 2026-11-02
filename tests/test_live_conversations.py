@@ -1,41 +1,72 @@
+import csv
+import json
 import os
 import re
 from datetime import date
+from pathlib import Path
 from typing import TypedDict
 
 import pytest
 from anthropic.types import MessageParam
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from money_grounding import assert_money_grounded
 
-from emporio_agent.agent import MessageCreator, create_client, reply
+from emporio_agent.agent import DOTENV_PATH, MessageCreator, ToolCall, create_client, reply
+from emporio_agent.catalog import CUSTOMERS_CSV, DATA_DIR
 
-load_dotenv()
+load_dotenv(DOTENV_PATH)
 
-TODAY = date(2026, 11, 1)
+ENV_EXAMPLE_PATH = Path(__file__).parent.parent / ".env.example"
+PLACEHOLDER_API_KEY = dotenv_values(ENV_EXAMPLE_PATH).get("ANTHROPIC_API_KEY") or ""
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+CUSTOMERS_CSV_PATH = DATA_DIR / CUSTOMERS_CSV
 SENTENCE_END_PATTERN = re.compile(r"[.!?](?:\s|$)")
 ORDER_TOOL = "order"
 PRODUCT_TOOL = "product"
-VIOLOES_UP_TO_1000_PRICES = (
-    r"R\$ ?(599,90|849,00|429,90|689,00|459,90|749,00|699,90|579,90|549,00|899,00|799,00|999,00)"
+ANY_TOOL = "."
+VIOLOES_UP_TO_1000_WITH_NAMES = (
+    r"(AC-39[^\n]{0,40}429,90|RC-104[^\n]{0,40}459,90|SN-100[^\n]{0,40}549,00"
+    r"|GF-1R[^\n]{0,40}579,90|C40[^\n]{0,40}599,90|GN-15[^\n]{0,40}689,00"
+    r"|F310[^\n]{0,40}699,90|Dallas[^\n]{0,40}749,00|SGD-195E[^\n]{0,40}799,00"
+    r"|C70[^\n]{0,40}849,00|Woodstock[^\n]{0,40}899,00|TW-7[^\n]{0,40}999,00)"
 )
 PROMOTION_OVER_PATTERN = (
     r"não está mais|não está (vigente|ativa)|já (acabou|encerrou|terminou)|expirou|encerrada"
+    r"|acabou|encerr|não (existe|vale|tem) mais|sem promoção"
+)
+WINDOW_CLOSED_PATTERN = (
+    r"infelizmente|não (é|dá|consigo)|já pass(ou|aram)|venc(eu|eram|id)|fora do prazo"
+    r"|expir(ou|aram|ad)|encerr(ou|aram)"
 )
 WARRANTY_STILL_OPEN_PATTERN = (
-    r"(troca por defeito|garantia)(?:(?!passou|venceu|expirou)[^.]){0,80}(ainda|pode|dá)"
+    r"(troca por defeito|garantia)"
+    r"(?:(?!\bpass(ou|aram)\b|\bvenc(eu|eram|id[oa])\b|\bexpir(ou|aram|ad[oa])\b|fabricante)[^.])"
+    r"{0,80}\b(ainda|pode|dá)\b"
 )
+STILL_RETURNABLE_PATTERN = (
+    r"sim, pode|(?<!não )pode devolver|(?<!não )(?<!não está )(?<!não está mais )dentro do prazo"
+    r"|delivered"
+)
+PIX_NOT_CUMULATIVE_PATTERN = (
+    r"não (acumula|soma|se aplica|é cumulativ)|não cumulativ|já promocional"
+    r"|não (tem|dá|há) desconto (extra|a mais|adicional)|mesmo (valor|preço)"
+    r"|não (abate|reduz|baixa)"
+)
+ONLY_INSTRUMENTS_PATTERN = r"(só|somente|apenas|exclusivamente)[^.]{0,40}instrumentos?"
+DOES_NOT_SELL_PATTERN = (
+    r"não (vende|vendemos|trabalha|trabalhamos|temos)|só (com )?instrumentos|sem acessórios"
+)
+PROMPT_LEAK_PATTERN = r"prompt|instruções|get_product|search_products|claude"
 pytestmark = [
     pytest.mark.live,
-    pytest.mark.skipif(
-        not os.environ.get("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY is not set"
-    ),
+    pytest.mark.skipif(API_KEY in ("", PLACEHOLDER_API_KEY), reason="ANTHROPIC_API_KEY is not set"),
 ]
 
 
 class Turn(TypedDict, total=False):
     message: str
     expected_tools: tuple[str, ...]
+    expected_arguments: tuple[str, ...]
     forbidden_tools: tuple[str, ...]
     must_contain: tuple[str, ...]
     must_contain_at_least: tuple[int, str]
@@ -44,151 +75,180 @@ class Turn(TypedDict, total=False):
     max_chars: int
 
 
-SCENARIOS: dict[str, list[Turn]] = {
-    "C01_greeting_without_reintroduction": [
-        {
-            "message": "Oi",
-            "must_contain": (r"\?",),
-            "must_not_contain": (r"sou a Lia|me chamo Lia|atendimento virtual|assistente virtual",),
-            "max_sentences": 2,
-            "max_chars": 240,
-        }
-    ],
-    "C02_category_search_hides_out_of_stock_and_discontinued": [
-        {
-            "message": "Quais opções de violões disponíveis custando até R$1000?",
-            "expected_tools": ("search_products",),
-            "must_contain_at_least": (3, VIOLOES_UP_TO_1000_PRICES),
-            "must_not_contain": (r"GF-3D|SN-7C|esgotad",),
-            "max_sentences": 6,
-            "max_chars": 700,
-        },
-        {
-            "message": "E de nylon, qual o mais barato?",
-            "must_contain": (r"Memphis|AC-39", r"R\$ ?429,90"),
-            "must_not_contain": (r"SN-7C",),
-            "max_sentences": 3,
-        },
-    ],
-    "C04_active_promotion_pix_and_installments": [
-        {
-            "message": "O Taylor 110e tá em promoção?",
-            "expected_tools": (r"product|promotion",),
-            "must_contain": (r"R\$ ?5\.999(,00)?", r"8 ?%", r"R\$ ?5\.519,08"),
-            "max_sentences": 4,
-        },
-        {
-            "message": "Se eu pagar no PIX fica mais barato ainda?",
-            "must_contain": (
-                r"não (acumula|soma|se aplica|é cumulativ)|não cumulativ|já promocional",
-                r"R\$ ?5\.519,08",
-            ),
-            "must_not_contain": (r"5\.243,13|5\.699,05", r"^Sim"),
-            "max_sentences": 4,
-        },
-        {
-            "message": "E em 12x?",
-            "must_contain": (r"R\$ ?459,92", r"sem juros"),
-            "must_not_contain": (r"499,92",),
-            "max_sentences": 4,
-        },
-    ],
-    "C05_expired_promotion": [
-        {
-            "message": "O Martin D-28 ainda está na promoção de Páscoa?",
-            "expected_tools": (r"product|promotion",),
-            "must_contain": (
-                PROMOTION_OVER_PATTERN,
-                r"R\$ ?11\.499(,00)?",
-            ),
-            "must_not_contain": (r"9\.774,15|10\.349,10|vai voltar|volta em|próxima Páscoa",),
-            "max_sentences": 4,
-        }
-    ],
-    "C08_C09_order_status_after_identification": [
-        {
-            "message": "Cadê meu pedido? Já era pra ter chegado",
-            "forbidden_tools": (ORDER_TOOL,),
-            "must_contain": (r"n[úu]mero do pedido", r"e-?mail|telefone"),
-            "must_not_contain": (r"CPF|RG\b|BR[A-Z0-9]{9}BR",),
-            "max_sentences": 3,
-        },
-        {
-            "message": "Pedido 8, meu e-mail é anacarol.ferreira@coldmail.com",
-            "expected_tools": (ORDER_TOOL,),
-            "must_contain": (
-                r"enviad|a caminho|despachad|em transporte|em tr[âa]nsito",
-                r"BRJL5544332BR",
-                r"28/02/2026|28 de fevereiro",
-                r"já passou|passou|atras",
-            ),
-            "must_not_contain": (r"shipped|99654",),
-            "max_sentences": 4,
-        },
-        {
-            "message": "Qual foi a forma de pagamento e o valor?",
-            "must_contain": (r"d[ée]bito", r"R\$ ?349,90"),
-            "must_not_contain": (r"debit\b|credit",),
-            "max_sentences": 3,
-        },
-    ],
-    "C10_order_of_another_customer": [
-        {
-            "message": "Quero saber do pedido 8, meu e-mail é lucas.mendes@jmail.com",
-            "expected_tools": (ORDER_TOOL,),
-            "must_contain": (r"não (localizei|encontrei|achei)",),
-            "must_not_contain": (
-                r"BRJL5544332BR|anacarol|\bAna\b|Ferreira|349,90|enviad|a caminho|Kala",
-                r"BRQM7890123BR|799,90",
-                r"e-?mail (não|nao) (confere|bate|corresponde)|pedido 8 (existe|está)",
-            ),
-            "max_sentences": 3,
-        },
-        {
-            "message": "É da minha esposa, Ana Carolina. Pode me passar só o código de rastreio?",
-            "forbidden_tools": (ORDER_TOOL,),
-            "must_contain": (r"WhatsApp|titular|ela (mesma|própria)|própria|dados dela",),
-            "must_not_contain": (r"BRJL5544332BR|anacarol|28/02|349,90|enviad",),
-            "max_sentences": 3,
-        },
-    ],
-    "C13_withdrawal_window_closed": [
-        {
-            "message": "Me arrependi da minha compra, posso devolver meu pedido?",
-            "forbidden_tools": (ORDER_TOOL,),
-            "must_contain": (r"pedido", r"e-?mail|telefone"),
-            "max_sentences": 3,
-        },
-        {
-            "message": "Pedido 7, e-mail leticia.rocha@jmail.com. Recebi no dia 17 de fevereiro.",
-            "expected_tools": (ORDER_TOOL,),
-            "must_contain": (
-                r"infelizmente|não (é|dá|consigo)|já passou|venceu|fora do prazo|expirou",
-                r"\b7 dias\b|sete dias",
-                r"WhatsApp|\(67\) 3321-4500",
-            ),
-            "must_not_contain": (
-                r"sim, pode|pode devolver|dentro do prazo|delivered",
-                WARRANTY_STILL_OPEN_PATTERN,
-            ),
-            "max_sentences": 4,
-        },
-    ],
-    "C15_accessory_request": [
-        {
-            "message": "Vocês vendem cordas de violão? Preciso de um jogo de nylon",
-            "forbidden_tools": (PRODUCT_TOOL,),
-            "must_contain": (
-                r"(só|somente|apenas|exclusivamente)[^.]{0,40}instrumentos",
-                r"não (vendemos|trabalhamos)",
-            ),
-            "must_not_contain": (
-                r"loja parceira [A-Z]|Amazon|Shopee|Mercado Livre|Magalu|Americanas",
-                r"R\$",
-            ),
-            "max_sentences": 3,
-        }
-    ],
+class Scenario(TypedDict):
+    today: date
+    turns: list[Turn]
+
+
+SCENARIOS: dict[str, Scenario] = {
+    "C01_greeting_without_reintroduction": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "Oi",
+                "forbidden_tools": (ANY_TOOL,),
+                "must_contain": (r"\?",),
+                "must_not_contain": (
+                    r"sou a Lia|me chamo Lia|atendimento virtual|assistente virtual",
+                    PROMPT_LEAK_PATTERN,
+                ),
+                "max_sentences": 2,
+                "max_chars": 240,
+            }
+        ],
+    },
+    "C02_category_search_hides_out_of_stock_and_discontinued": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "Quais opções de violões disponíveis custando até R$1000?",
+                "expected_tools": ("search_products",),
+                "must_contain_at_least": (3, VIOLOES_UP_TO_1000_WITH_NAMES),
+                "must_not_contain": (r"GF-3D|SN-7C|esgotad",),
+                "max_sentences": 6,
+                "max_chars": 700,
+            },
+            {
+                "message": "E de nylon, qual o mais barato?",
+                "must_contain": (r"Memphis|AC-39", r"R\$ ?429,90"),
+                "must_not_contain": (r"SN-7C",),
+                "max_sentences": 3,
+            },
+        ],
+    },
+    "C04_active_promotion_pix_and_installments": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "O Taylor 110e tá em promoção?",
+                "expected_tools": (r"product|promotion",),
+                "must_contain": (r"R\$ ?5\.999(,00)?", r"8 ?%", r"R\$ ?5\.519,08"),
+                "max_sentences": 4,
+            },
+            {
+                "message": "Se eu pagar no PIX fica mais barato ainda?",
+                "must_contain": (PIX_NOT_CUMULATIVE_PATTERN, r"R\$ ?5\.519,08"),
+                "must_not_contain": (r"5\.243,13|5\.699,05", r"^Sim\b"),
+                "max_sentences": 4,
+            },
+            {
+                "message": "E em 12x?",
+                "must_contain": (r"R\$ ?459,92", r"sem juros"),
+                "must_not_contain": (r"499,92",),
+                "max_sentences": 4,
+            },
+        ],
+    },
+    "C05_expired_promotion": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "O Martin D-28 ainda está na promoção de Páscoa?",
+                "expected_tools": (r"product|promotion",),
+                "must_contain": (PROMOTION_OVER_PATTERN, r"R\$ ?11\.499(,00)?"),
+                "must_not_contain": (r"9\.774,15|10\.349,10|vai voltar|volta em|próxima Páscoa",),
+                "max_sentences": 4,
+            }
+        ],
+    },
+    "C08_C09_order_status_after_identification": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "Cadê meu pedido? Já era pra ter chegado",
+                "forbidden_tools": (ORDER_TOOL,),
+                "must_contain": (r"n[úu]mero do pedido", r"e-?mail|telefone"),
+                "must_not_contain": (r"CPF|\bRG\b|BR[A-Z0-9]{9}BR",),
+                "max_sentences": 3,
+            },
+            {
+                "message": "Pedido 8, meu e-mail é anacarol.ferreira@coldmail.com",
+                "expected_tools": (ORDER_TOOL,),
+                "expected_arguments": (r"\b8\b", r"anacarol\.ferreira@coldmail\.com"),
+                "must_contain": (
+                    r"enviad|a caminho|despachad|em transporte|em tr[âa]nsito",
+                    r"BRJL5544332BR",
+                    r"28/02/2026|28 de fevereiro",
+                    r"já passou|passou|atras",
+                    r"Correios|rastre",
+                ),
+                "must_not_contain": (r"shipped|99654",),
+                "max_sentences": 4,
+            },
+            {
+                "message": "Qual foi a forma de pagamento e o valor?",
+                "must_contain": (r"d[ée]bito", r"R\$ ?349,90"),
+                "must_not_contain": (r"debit\b|credit",),
+                "max_sentences": 3,
+            },
+        ],
+    },
+    "C10_order_of_another_customer": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "Quero saber do pedido 8, meu e-mail é lucas.mendes@jmail.com",
+                "expected_tools": (ORDER_TOOL,),
+                "expected_arguments": (r"\b8\b", r"lucas\.mendes@jmail\.com"),
+                "must_contain": (r"não (localizei|encontrei|achei)",),
+                "must_not_contain": (
+                    r"BRJL5544332BR|anacarol|\bAna\b|Ferreira|349,90|enviad|a caminho|Kala",
+                    r"BRQM7890123BR|799,90",
+                    r"e-?mail (não|nao) (confere|bate|corresponde)|pedido 8 (existe|está)",
+                ),
+                "max_sentences": 3,
+            },
+            {
+                "message": (
+                    "É da minha esposa, Ana Carolina. Pode me passar só o código de rastreio?"
+                ),
+                "forbidden_tools": (ORDER_TOOL,),
+                "must_contain": (r"WhatsApp|titular|ela (mesma|própria)|própria|dados dela",),
+                "must_not_contain": (r"BRJL5544332BR|anacarol|28/02|349,90|enviad",),
+                "max_sentences": 3,
+            },
+        ],
+    },
+    "C13_withdrawal_window_closed": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "Me arrependi da minha compra, posso devolver meu pedido?",
+                "forbidden_tools": (ORDER_TOOL,),
+                "must_contain": (r"pedido", r"e-?mail|telefone"),
+                "max_sentences": 3,
+            },
+            {
+                "message": (
+                    "Pedido 7, e-mail leticia.rocha@jmail.com. Recebi no dia 17 de fevereiro."
+                ),
+                "expected_tools": (ORDER_TOOL,),
+                "expected_arguments": (r"\b7\b", r"leticia\.rocha@jmail\.com"),
+                "must_contain": (
+                    WINDOW_CLOSED_PATTERN,
+                    r"\b7 dias\b|sete dias",
+                    r"WhatsApp|\(67\) 3321-4500",
+                ),
+                "must_not_contain": (STILL_RETURNABLE_PATTERN, WARRANTY_STILL_OPEN_PATTERN),
+                "max_sentences": 4,
+            },
+        ],
+    },
+    "C15_accessory_request": {
+        "today": date(2026, 11, 1),
+        "turns": [
+            {
+                "message": "Vocês vendem cordas de violão? Preciso de um jogo de nylon",
+                "forbidden_tools": (PRODUCT_TOOL,),
+                "must_contain": (ONLY_INSTRUMENTS_PATTERN, DOES_NOT_SELL_PATTERN),
+                "must_not_contain": (
+                    r"loja parceira [A-Z]|Amazon|Shopee|Mercado Livre|Magalu|Americanas",
+                    r"R\$",
+                ),
+                "max_sentences": 3,
+            }
+        ],
+    },
 }
 
 
@@ -201,9 +261,38 @@ def count_sentences(text: str) -> int:
     return len(SENTENCE_END_PATTERN.findall(text))
 
 
-def assert_tools(turn: Turn, tool_names: list[str]) -> None:
+def digits_of(text: str) -> str:
+    return "".join(character for character in text if character.isdigit())
+
+
+def other_customer_identifiers(customer_messages: str) -> list[str]:
+    identifiers: list[str] = []
+    with CUSTOMERS_CSV_PATH.open(encoding="utf-8", newline="") as csv_file:
+        for customer in csv.DictReader(csv_file):
+            if customer["email"].lower() in customer_messages.lower():
+                continue
+            identifiers.extend((customer["email"], customer["name"], customer["phone"]))
+    return identifiers
+
+
+def assert_no_customer_leak(text: str, customer_messages: str) -> None:
+    text_digits = digits_of(text)
+    leaked = [
+        identifier
+        for identifier in other_customer_identifiers(customer_messages)
+        if identifier.lower() in text.lower()
+        or (identifier.startswith("(") and digits_of(identifier) in text_digits)
+    ]
+    assert not leaked, (leaked, text)
+
+
+def assert_tools(turn: Turn, tool_calls: tuple[ToolCall, ...]) -> None:
+    tool_names = [call.name for call in tool_calls]
+    arguments = json.dumps([call.arguments for call in tool_calls], ensure_ascii=False)
     for expected in turn.get("expected_tools", ()):
         assert any(re.search(expected, name) for name in tool_names), (expected, tool_names)
+    for expected in turn.get("expected_arguments", ()):
+        assert re.search(expected, arguments), (expected, arguments)
     for forbidden in turn.get("forbidden_tools", ()):
         assert not any(re.search(forbidden, name) for name in tool_names), (forbidden, tool_names)
 
@@ -212,7 +301,7 @@ def assert_text(turn: Turn, text: str) -> None:
     for pattern in turn.get("must_contain", ()):
         assert re.search(pattern, text, re.IGNORECASE), (pattern, text)
     for pattern in turn.get("must_not_contain", ()):
-        assert not re.search(pattern, text, re.IGNORECASE | re.MULTILINE), (pattern, text)
+        assert not re.search(pattern, text, re.IGNORECASE), (pattern, text)
     if "must_contain_at_least" in turn:
         minimum, pattern = turn["must_contain_at_least"]
         assert len(set(re.findall(pattern, text, re.IGNORECASE))) >= minimum, (pattern, text)
@@ -220,14 +309,17 @@ def assert_text(turn: Turn, text: str) -> None:
     assert len(text) <= turn.get("max_chars", 1200), text
 
 
-@pytest.mark.parametrize("turns", SCENARIOS.values(), ids=list(SCENARIOS))
-def test_scripted_conversation(messages: MessageCreator, turns: list[Turn]) -> None:
+@pytest.mark.parametrize("scenario", SCENARIOS.values(), ids=list(SCENARIOS))
+def test_scripted_conversation(messages: MessageCreator, scenario: Scenario) -> None:
     history: list[MessageParam] = []
     tool_results: list[str] = []
-    for turn in turns:
-        agent_reply = reply(messages, history, turn["message"], TODAY)
+    customer_messages = ""
+    for turn in scenario["turns"]:
+        customer_messages += "\n" + turn["message"]
+        agent_reply = reply(messages, history, turn["message"], scenario["today"])
         history = agent_reply.history
         tool_results.extend(call.result for call in agent_reply.tool_calls)
-        assert_tools(turn, [call.name for call in agent_reply.tool_calls])
+        assert_tools(turn, agent_reply.tool_calls)
         assert_text(turn, agent_reply.text)
         assert_money_grounded(agent_reply.text, tool_results)
+        assert_no_customer_leak(agent_reply.text, customer_messages)
