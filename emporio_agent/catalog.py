@@ -158,6 +158,7 @@ PROMOTIONS_CSV = "desafio_tecnico_ai_eng - promotions.csv"
 CENTS = Decimal("0.01")
 CENTS_PER_BRL = Decimal(100)
 PERCENT = Decimal(100)
+BRL_PREFIX = "R$ "
 BRL_SEPARATORS = str.maketrans(",.", ".,")
 PIX_DISCOUNT_PERCENT = 5
 MAX_INSTALLMENTS = 12
@@ -490,7 +491,7 @@ def catalog_connection() -> sqlite3.Connection:
 
 
 def format_brl(value: Decimal) -> str:
-    return "R$ " + format(value.quantize(CENTS), ",.2f").translate(BRL_SEPARATORS)
+    return BRL_PREFIX + format(value.quantize(CENTS), ",.2f").translate(BRL_SEPARATORS)
 
 
 def brl_from_cents(cents: int) -> Decimal:

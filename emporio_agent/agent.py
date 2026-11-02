@@ -20,7 +20,7 @@ from anthropic.types.message_create_params import MessageCreateParamsNonStreamin
 from dotenv import load_dotenv
 
 from emporio_agent.catalog import STORE_INFO
-from emporio_agent.tools import TOOL_DEFINITIONS, dispatch_tool
+from emporio_agent.tools import BRAZILIAN_DATE_FORMAT, TOOL_DEFINITIONS, dispatch_tool
 
 DEFAULT_MODEL = "claude-opus-5-5"
 MODEL_ENVIRONMENT_VARIABLE = "ANTHROPIC_MODEL"
@@ -134,7 +134,7 @@ def create_client() -> anthropic.Anthropic:
 def today_section(today: date) -> str:
     sentence = TODAY_TEMPLATE.format(
         weekday=WEEKDAY_NAMES_PT_BR[today.weekday()],
-        label=today.strftime("%d/%m/%Y"),
+        label=today.strftime(BRAZILIAN_DATE_FORMAT),
         iso=today.isoformat(),
     )
     return f"{TODAY_SECTION_TITLE}\n\n{sentence}"

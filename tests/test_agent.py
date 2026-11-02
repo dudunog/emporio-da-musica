@@ -209,6 +209,24 @@ def test_tool_use_round_trip() -> None:
     }
 
 
+def test_reply_passes_today_to_the_tools() -> None:
+    arguments: dict[str, object] = {
+        "order_id": 4,
+        "customer_email": "lucas.mendes@jmail.com",
+        "customer_phone": None,
+    }
+    client = ScriptedClient(
+        [
+            message([tool_use("toolu_1", "get_order_status", arguments)], "tool_use"),
+            text_reply(FINAL_TEXT),
+        ]
+    )
+
+    result = reply(client, [], "Pedido 4", date(2025, 12, 24))
+
+    assert '"withdrawal_window_open": true' in result.tool_calls[0].result
+
+
 def test_multiple_tool_uses_in_one_response() -> None:
     client = ScriptedClient(
         [
