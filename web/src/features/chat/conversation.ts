@@ -2,6 +2,8 @@ import { FAILURE_MESSAGES, GREETING, type UnavailableReason } from "./chat-copy"
 
 export type EntryKind = "customer" | "assistant" | "failure";
 
+export type FailureReason = UnavailableReason | "rejected";
+
 type ConversationEntry = Readonly<{
   id: number;
   kind: EntryKind;
@@ -48,7 +50,8 @@ export function withReply(conversation: Conversation, chatReply: ChatReply): Con
   };
 }
 
-export function withFailure(conversation: Conversation, reason: UnavailableReason): Conversation {
+export function withFailure(conversation: Conversation, reason: FailureReason): Conversation {
+  if (reason === "rejected") return { ...conversation, entries: conversation.entries.slice(0, -1), isWaiting: false };
   return { ...withEntry(conversation, "failure", FAILURE_MESSAGES[reason]), isWaiting: false };
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChatUnavailableError, failureReasonOf, sendChatMessage } from "./send-chat-message";
+import { ChatRequestError, failureReasonOf, sendChatMessage } from "./send-chat-message";
 
 const REQUEST = { conversationId: null, message: "Oi" };
 
@@ -53,16 +53,21 @@ describe("sendChatMessage", () => {
     ["plain text from the proxy", new Response("Internal Server Error", { status: 500 })],
     ["an empty gateway answer", new Response(null, { status: 504 })],
     ["an unknown reason", jsonResponse(503, { reason: "constructor" })],
-    ["a validation answer", jsonResponse(422, { detail: [] })],
     ["a successful answer without reply", jsonResponse(200, { conversation_id: "abc" })],
+    ["a successful answer with an empty reply", jsonResponse(200, { conversation_id: "abc", reply: "" })],
     ["a successful answer that is not JSON", new Response("<html></html>", { status: 200 })],
   ])("uses the connection reason for %s", async (_description, response) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
     await expect(reasonOfFailure()).resolves.toBe("connection");
   });
 
+  it("reports a validation answer as a rejected message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(422, { detail: [] })));
+    await expect(reasonOfFailure()).resolves.toBe("rejected");
+  });
+
   it("carries the reason on the error type", () => {
-    expect(failureReasonOf(new ChatUnavailableError("rate_limit"))).toBe("rate_limit");
+    expect(failureReasonOf(new ChatRequestError("rate_limit"))).toBe("rate_limit");
     expect(failureReasonOf(new Error("unexpected"))).toBe("connection");
   });
 });

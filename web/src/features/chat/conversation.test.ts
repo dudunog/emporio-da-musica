@@ -67,6 +67,14 @@ describe("conversation", () => {
     expect(retryableEntryId(INITIAL_CONVERSATION)).toBeNull();
   });
 
+  it("drops a rejected message and falls back to the one before it", () => {
+    const failed = withFailure(withCustomerMessage(INITIAL_CONVERSATION, "Primeira"), "server");
+    const rejected = withFailure(withCustomerMessage(failed, "Segunda"), "rejected");
+    expect(rejected.isWaiting).toBe(false);
+    expect(rejected.entries).toEqual(failed.entries);
+    expect(lastCustomerMessage(rejected)).toBe("Primeira");
+  });
+
   it("has no customer message at the start", () => {
     expect(lastCustomerMessage(INITIAL_CONVERSATION)).toBeNull();
   });

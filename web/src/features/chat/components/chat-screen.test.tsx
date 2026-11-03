@@ -224,6 +224,16 @@ describe("ChatApp", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
+  it("does not show a failure when the server rejects the message", async () => {
+    render(<ChatApp />);
+    sendWithEnter("Oi");
+    await settle(jsonResponse(422, { detail: [] }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tentar de novo" })).toBeNull();
+    expect(screen.queryByRole("article", { name: "Você" })).toBeNull();
+    expect(document.activeElement).toBe(composer());
+  });
+
   it("retries the same message without a second customer bubble", async () => {
     render(<ChatApp />);
     sendWithEnter("Oi");
