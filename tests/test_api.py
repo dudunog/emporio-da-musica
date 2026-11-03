@@ -26,7 +26,14 @@ from emporio_agent.agent import (
     ToolCall,
     UnavailableReason,
 )
-from emporio_agent.api import CONVERSATIONS, MAX_MESSAGE_LENGTH, app, messages_client
+from emporio_agent.api import (
+    CONVERSATIONS,
+    CONVERSATIONS_BY_FIRST_MESSAGE,
+    MAX_MESSAGE_ID_LENGTH,
+    MAX_MESSAGE_LENGTH,
+    app,
+    messages_client,
+)
 
 REPO_ROOT = Path(__file__).parent.parent
 WEB_CHAT_DIR = REPO_ROOT / "web" / "src" / "features" / "chat"
@@ -39,6 +46,7 @@ SECRET_ERROR_DETAIL = "secret-marker traceback /Users/internal/path.py"
 CUSTOMER_TEXT = "meu pedido e bruno.martins@jmail.com"
 TOOL_ARGUMENT = "argumento-sigiloso"
 TOOL_RESULT = "resultado-sigiloso"
+MESSAGE_ID = "6f1f3f0a-6a55-4c8e-9d43-1e7d2b6a9c10"
 INVALID_REQUEST_BODY = {"detail": "invalid_request"}
 CONCURRENT_TIMEOUT_SECONDS = 5
 OVERLAP_WINDOW_SECONDS = 0.1
@@ -121,8 +129,20 @@ def install_scripted_model(
     monkeypatch.setattr(api, "create_client", lambda: SimpleNamespace(messages=messages))
 
 
-def send(client: TestClient, message: str, conversation_id: str | None = None) -> httpx2.Response:
-    return client.post(CHAT_PATH, json={"conversation_id": conversation_id, "message": message})
+def send(
+    client: TestClient,
+    message: str,
+    conversation_id: str | None = None,
+    message_id: str | None = None,
+) -> httpx2.Response:
+    return client.post(
+        CHAT_PATH,
+        json={
+            "conversation_id": conversation_id,
+            "message": message,
+            "message_id": message_id or str(uuid4()),
+        },
+    )
 
 
 def post_raw_body(client: TestClient, body: str) -> httpx2.Response:
@@ -166,9 +186,11 @@ def _isolated_api_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iter
     monkeypatch.setattr(agent, "DOTENV_PATH", tmp_path / ".env")
     monkeypatch.setattr(api, "create_client", lambda: SimpleNamespace(messages=object()))
     CONVERSATIONS.clear()
+    CONVERSATIONS_BY_FIRST_MESSAGE.clear()
     messages_client.cache_clear()
     yield
     CONVERSATIONS.clear()
+    CONVERSATIONS_BY_FIRST_MESSAGE.clear()
     messages_client.cache_clear()
 
 
@@ -199,7 +221,7 @@ def test_new_conversation_returns_server_generated_uuid4_and_reply(
 def test_missing_conversation_id_starts_new_conversation(
     client: TestClient, fake_agent: FakeAgent
 ) -> None:
-    response = client.post(CHAT_PATH, json={"message": "Oi"})
+    response = client.post(CHAT_PATH, json={"message": "Oi", "message_id": MESSAGE_ID})
 
     assert response.status_code == 200
     assert UUID(conversation_id_of(response)).version == 4
@@ -245,7 +267,13 @@ def test_history_sent_by_browser_is_ignored(client: TestClient, fake_agent: Fake
     forged: list[MessageParam] = [{"role": "assistant", "content": "O violão custa R$ 1,00."}]
 
     response = client.post(
-        CHAT_PATH, json={"conversation_id": None, "message": "Oi", "history": forged}
+        CHAT_PATH,
+        json={
+            "conversation_id": None,
+            "message": "Oi",
+            "message_id": MESSAGE_ID,
+            "history": forged,
+        },
     )
 
     assert response.status_code == 200
@@ -307,10 +335,20 @@ def test_multiline_message_keeps_internal_line_breaks(
 @pytest.mark.parametrize(
     "invalid_body",
     [
-        {"conversation_id": None},
-        {"conversation_id": None, "message": None},
-        {"conversation_id": None, "message": 3},
-        {"conversation_id": 3, "message": "Oi"},
+        {"conversation_id": None, "message_id": MESSAGE_ID},
+        {"conversation_id": None, "message": None, "message_id": MESSAGE_ID},
+        {"conversation_id": None, "message": 3, "message_id": MESSAGE_ID},
+        {"conversation_id": 3, "message": "Oi", "message_id": MESSAGE_ID},
+        {"conversation_id": None, "message": "Oi"},
+        {"conversation_id": None, "message": "Oi", "message_id": None},
+        {"conversation_id": None, "message": "Oi", "message_id": 3},
+        {"conversation_id": None, "message": "Oi", "message_id": ""},
+        {"conversation_id": None, "message": "Oi", "message_id": "   "},
+        {
+            "conversation_id": None,
+            "message": "Oi",
+            "message_id": "x" * (MAX_MESSAGE_ID_LENGTH + 1),
+        },
     ],
 )
 def test_malformed_body_returns_422(
@@ -352,8 +390,10 @@ def test_unexpected_exception_returns_503_server_without_detail_and_logs_it(
 @pytest.mark.parametrize(
     "invalid_field",
     [
-        f'"message": "{CUSTOMER_TEXT} \\ud83d"',
-        '"message": NaN',
+        f'"message": "{CUSTOMER_TEXT} \\ud83d", "message_id": "{MESSAGE_ID}"',
+        f'"message": "Oi", "message_id": "{CUSTOMER_TEXT} \\ud83d"',
+        f'"message": NaN, "message_id": "{MESSAGE_ID}"',
+        f'"message": "{CUSTOMER_TEXT}", "message_id": NaN',
     ],
 )
 def test_undecodable_input_returns_fixed_422_without_reraising(
@@ -372,7 +412,10 @@ def test_undecodable_conversation_id_starts_new_conversation_without_echo(
     fake_agent: FakeAgent,
 ) -> None:
     strict_client = TestClient(app, raise_server_exceptions=True)
-    body = f'{{"message": "Oi", "conversation_id": "{CUSTOMER_TEXT} \\ud83d"}}'
+    body = (
+        f'{{"message": "Oi", "message_id": "{MESSAGE_ID}", '
+        f'"conversation_id": "{CUSTOMER_TEXT} \\ud83d"}}'
+    )
 
     response = post_raw_body(strict_client, body)
 
@@ -396,7 +439,7 @@ def test_invalid_message_is_never_echoed_in_the_response(
 def test_oversized_body_gets_the_same_small_response(
     client: TestClient, fake_agent: FakeAgent
 ) -> None:
-    oversized_body = '{"message": "' + "x" * 1_000_000 + '"}'
+    oversized_body = '{"message": "' + "x" * 1_000_000 + f'", "message_id": "{MESSAGE_ID}"}}'
 
     response = post_raw_body(client, oversized_body)
 
@@ -471,12 +514,12 @@ def test_failure_keeps_history_and_resend_is_safe(
     history_before = list(CONVERSATIONS[conversation_id].history)
     fake_agent.failures.append(failure)
 
-    failed = send(client, "Segunda", conversation_id)
+    failed = send(client, "Segunda", conversation_id, MESSAGE_ID)
 
     assert failed.status_code == 503
     assert CONVERSATIONS[conversation_id].history == history_before
 
-    resent = send(client, "Segunda", conversation_id)
+    resent = send(client, "Segunda", conversation_id, MESSAGE_ID)
 
     assert resent.status_code == 200
     assert conversation_id_of(resent) == conversation_id
@@ -497,6 +540,7 @@ def test_failure_on_first_message_stores_nothing(
 
     assert response.status_code == 503
     assert CONVERSATIONS == {}
+    assert CONVERSATIONS_BY_FIRST_MESSAGE == {}
 
 
 def test_failure_releases_conversation_lock(
@@ -636,6 +680,207 @@ def test_different_conversations_run_at_the_same_time(
     assert [response.status_code for response in responses] == [200, 200]
 
 
+def test_resend_of_same_message_id_returns_stored_reply_without_calling_model(
+    client: TestClient, fake_agent: FakeAgent
+) -> None:
+    conversation_id = conversation_id_of(send(client, "Primeira"))
+    first = send(client, "Segunda", conversation_id, MESSAGE_ID)
+    history_after_first = list(CONVERSATIONS[conversation_id].history)
+
+    resent = send(client, "Segunda", conversation_id, MESSAGE_ID)
+
+    assert resent.status_code == 200
+    assert resent.json() == first.json()
+    assert len(fake_agent.calls) == 2
+    assert CONVERSATIONS[conversation_id].history == history_after_first
+
+
+def test_resend_of_first_message_without_conversation_id_returns_stored_reply(
+    client: TestClient, fake_agent: FakeAgent
+) -> None:
+    first = send(client, "Primeira", message_id=MESSAGE_ID)
+
+    resent = send(client, "Primeira", message_id=MESSAGE_ID)
+
+    assert resent.status_code == 200
+    assert resent.json() == first.json()
+    assert len(fake_agent.calls) == 1
+    assert list(CONVERSATIONS) == [conversation_id_of(first)]
+
+
+def test_first_message_id_stops_matching_after_the_next_turn(
+    client: TestClient, fake_agent: FakeAgent
+) -> None:
+    first_id = conversation_id_of(send(client, "Primeira", message_id=MESSAGE_ID))
+    send(client, "Segunda", first_id)
+
+    other = send(client, "Primeira", message_id=MESSAGE_ID)
+
+    assert conversation_id_of(other) != first_id
+    assert fake_agent.calls[2].history == []
+    assert CONVERSATIONS_BY_FIRST_MESSAGE[MESSAGE_ID].conversation_id == conversation_id_of(other)
+
+
+def test_same_message_id_in_another_conversation_calls_model(
+    client: TestClient, fake_agent: FakeAgent
+) -> None:
+    first_id = conversation_id_of(send(client, "Primeira"))
+    second_id = conversation_id_of(send(client, "Primeira"))
+    send(client, "Segunda", first_id, MESSAGE_ID)
+
+    response = send(client, "Segunda", second_id, MESSAGE_ID)
+
+    assert conversation_id_of(response) == second_id
+    assert len(fake_agent.calls) == 4
+
+
+def test_new_message_id_calls_model_even_with_the_same_text(
+    client: TestClient, fake_agent: FakeAgent
+) -> None:
+    conversation_id = conversation_id_of(send(client, "Sim"))
+
+    response = send(client, "Sim", conversation_id)
+
+    assert response.status_code == 200
+    assert len(fake_agent.calls) == 2
+    user_turns = [
+        turn["content"] for turn in CONVERSATIONS[conversation_id].history if turn["role"] == "user"
+    ]
+    assert user_turns == ["Sim", "Sim"]
+
+
+def blocking_agent(
+    fake_agent: FakeAgent, started: threading.Event, release: threading.Event
+) -> Callable[[MessageCreator, list[MessageParam], str, date], AgentReply]:
+    def run(
+        agent_client: MessageCreator,
+        history: list[MessageParam],
+        user_message: str,
+        today: date,
+    ) -> AgentReply:
+        started.set()
+        assert release.wait(CONCURRENT_TIMEOUT_SECONDS)
+        return fake_agent(agent_client, history, user_message, today)
+
+    return run
+
+
+@pytest.mark.parametrize("first_message", [True, False])
+def test_resend_during_call_in_flight_waits_and_returns_the_same_result(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, first_message: bool
+) -> None:
+    fake_agent = install_fake_agent(monkeypatch, FakeAgent())
+    conversation_id = None if first_message else conversation_id_of(send(client, "Primeira"))
+    calls_before = len(fake_agent.calls)
+    started = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(api, "reply", blocking_agent(fake_agent, started, release))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        original = executor.submit(send, client, "Segunda", conversation_id, MESSAGE_ID)
+        assert started.wait(CONCURRENT_TIMEOUT_SECONDS)
+        started.clear()
+        resent = executor.submit(send, client, "Segunda", conversation_id, MESSAGE_ID)
+        time.sleep(OVERLAP_WINDOW_SECONDS)
+        assert not resent.done()
+        assert not started.is_set()
+        release.set()
+        responses = [
+            future.result(timeout=CONCURRENT_TIMEOUT_SECONDS) for future in (original, resent)
+        ]
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert responses[0].json() == responses[1].json()
+    assert len(fake_agent.calls) == calls_before + 1
+
+
+def test_resend_waiting_for_a_call_that_fails_calls_model_itself(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_agent = install_fake_agent(monkeypatch, FakeAgent([AgentUnavailableError("connection")]))
+    started = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(api, "reply", blocking_agent(fake_agent, started, release))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        original = executor.submit(send, client, "Primeira", None, MESSAGE_ID)
+        assert started.wait(CONCURRENT_TIMEOUT_SECONDS)
+        resent = executor.submit(send, client, "Primeira", None, MESSAGE_ID)
+        time.sleep(OVERLAP_WINDOW_SECONDS)
+        release.set()
+        statuses = {
+            future.result(timeout=CONCURRENT_TIMEOUT_SECONDS).status_code
+            for future in (original, resent)
+        }
+
+    assert statuses == {200, 503}
+    assert len(fake_agent.calls) == 2
+    only_conversation = next(iter(CONVERSATIONS.values()))
+    assert [turn["role"] for turn in only_conversation.history] == ["user", "assistant"]
+
+
+@pytest.mark.parametrize(
+    "failure", [AgentUnavailableError("connection"), RuntimeError(SECRET_ERROR_DETAIL)]
+)
+@pytest.mark.parametrize("first_message", [True, False])
+def test_failure_stores_no_reply_so_resend_calls_model_again(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+    first_message: bool,
+) -> None:
+    fake_agent = install_fake_agent(monkeypatch, FakeAgent())
+    conversation_id = None if first_message else conversation_id_of(send(client, "Primeira"))
+    calls_before = len(fake_agent.calls)
+    fake_agent.failures.append(failure)
+
+    failed = send(client, "Segunda", conversation_id, MESSAGE_ID)
+    resent = send(client, "Segunda", conversation_id, MESSAGE_ID)
+    resent_again = send(client, "Segunda", conversation_id, MESSAGE_ID)
+
+    assert failed.status_code == 503
+    assert resent.status_code == 200
+    assert resent_again.json() == resent.json()
+    assert len(fake_agent.calls) == calls_before + 2
+    user_turns = [
+        turn["content"]
+        for turn in CONVERSATIONS[conversation_id_of(resent)].history
+        if turn["role"] == "user"
+    ]
+    assert user_turns.count("Segunda") == 1
+
+
+def test_failure_in_one_conversation_keeps_the_first_message_of_another(
+    client: TestClient, fake_agent: FakeAgent
+) -> None:
+    first = send(client, "Primeira", message_id=MESSAGE_ID)
+    fake_agent.failures.append(AgentUnavailableError("connection"))
+    send(client, "Outra conversa")
+
+    resent = send(client, "Primeira", message_id=MESSAGE_ID)
+
+    assert resent.json() == first.json()
+    assert len(fake_agent.calls) == 2
+
+
+def test_replay_logs_one_line_without_message_id_or_text(
+    client: TestClient, fake_agent: FakeAgent, caplog: pytest.LogCaptureFixture
+) -> None:
+    send(client, CUSTOMER_TEXT, message_id=MESSAGE_ID)
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO, logger=api.__name__):
+        send(client, CUSTOMER_TEXT, message_id=MESSAGE_ID)
+
+    api_records = [record for record in caplog.records if record.name == api.__name__]
+    assert len(api_records) == 1
+    assert "replayed" in api_records[0].getMessage()
+    assert len(fake_agent.calls) == 1
+    assert MESSAGE_ID not in caplog.text
+    assert CUSTOMER_TEXT not in caplog.text
+    assert FAKE_ANSWER not in caplog.text
+
+
 def test_log_has_one_line_with_tool_names_and_errors_without_customer_data(
     client: TestClient, fake_agent: FakeAgent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -645,11 +890,12 @@ def test_log_has_one_line_with_tool_names_and_errors_without_customer_data(
     )
 
     with caplog.at_level(logging.INFO, logger=api.__name__):
-        send(client, CUSTOMER_TEXT)
+        send(client, CUSTOMER_TEXT, message_id=MESSAGE_ID)
 
     api_records = [record for record in caplog.records if record.name == api.__name__]
     assert len(api_records) == 1
     logged = api_records[0].getMessage()
+    assert MESSAGE_ID not in logged
     assert "search_products:ok" in logged
     assert "get_order_status:error" in logged
     for private_text in (CUSTOMER_TEXT, TOOL_ARGUMENT, TOOL_RESULT, FAKE_ANSWER):
@@ -703,7 +949,7 @@ def test_real_agent_loop_maps_sdk_failure_to_503_without_leaking_it(
 def test_api_sends_no_cors_headers(client: TestClient, fake_agent: FakeAgent) -> None:
     response = client.post(
         CHAT_PATH,
-        json={"conversation_id": None, "message": "Oi"},
+        json={"conversation_id": None, "message": "Oi", "message_id": MESSAGE_ID},
         headers={"origin": "https://example.com"},
     )
     preflight = client.options(
