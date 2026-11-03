@@ -61,7 +61,9 @@ FORBIDDEN_TERMS = (
     "deploy",
     "prompt",
     "modelo",
-    "Streamlit",
+    "Next",
+    "Vercel",
+    "React",
     "Anthropic",
     "Claude",
     "chat",
@@ -89,6 +91,8 @@ ACCENTED_WORDS = (
     "começa",
     "está",
     "não",
+    "indisponível",
+    "conexão",
     "disponível",
     "informações",
     "preços",
@@ -503,8 +507,9 @@ def whole_word(term: str) -> re.Pattern[str]:
 
 @pytest.mark.parametrize("term", FORBIDDEN_TERMS)
 def test_fallbacks_avoid_forbidden_terms(term: str) -> None:
-    pattern = whole_word(term)
-    offenders = {name: text for name, text in FALLBACK_TEXTS.items() if pattern.search(text)}
+    offenders = {
+        name: text for name, text in FALLBACK_TEXTS.items() if term.lower() in text.lower()
+    }
     assert offenders == {}
 
 
