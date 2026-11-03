@@ -91,11 +91,15 @@ describe("ChatApp", () => {
     expectNoForbiddenTerms();
   });
 
-  it.each(["   \n  ", "\t", "\u00a0 \u00a0"])("does not send the blank message %j", (blank) => {
+  it.each(["   \n  ", "\t", "\u00a0 \u00a0", "\u0085", "\u200b"])("does not send the blank message %j and clears the field", async (blank) => {
     render(<ChatApp />);
-    sendWithEnter(blank);
-    expect(fetchMock).not.toHaveBeenCalled();
+    typeMessage(blank);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Enviar mensagem" }).disabled).toBe(true);
+    fireEvent.keyDown(composer(), { key: "Enter" });
+    await act(async () => {});
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(composer().value).toBe("");
+    expect(document.activeElement).toBe(composer());
   });
 
   it("sends the trimmed message on Enter and clears the draft", async () => {

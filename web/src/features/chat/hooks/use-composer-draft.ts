@@ -12,6 +12,7 @@ export function useComposerDraft({ isWaiting, onSend }: ComposerDraftOptions) {
   const canSend = !isWaiting && isSendable(message);
 
   const submit = () => {
+    if (message === "") return setDraft("");
     if (!canSend) return;
     onSend(message);
     setDraft("");
