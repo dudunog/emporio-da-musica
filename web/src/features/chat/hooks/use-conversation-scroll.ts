@@ -1,21 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import type { Conversation } from "../conversation";
-import { forcesScrollToEnd, isAtEnd, wasJustCovered } from "../conversation-scroll";
+import { followAfterScroll, forcesScrollToEnd, wasJustCovered, type ScrollFollow } from "../conversation-scroll";
 
 const RETRY_BUTTON_SELECTOR = "[data-retry-button]";
+const INITIAL_FOLLOW: ScrollFollow = { isFollowing: true, lastScrollTop: 0 };
 
-function scrollToEnd(log: HTMLElement) {
+function scrollToEnd(log: HTMLElement, followRef: RefObject<ScrollFollow>) {
   log.scrollTop = log.scrollHeight;
+  followRef.current = { ...followRef.current, lastScrollTop: log.scrollTop };
 }
 
-function keepEndInViewOnResize(log: HTMLElement, isFollowingRef: RefObject<boolean>): () => void {
+function keepEndInViewOnResize(log: HTMLElement, followRef: RefObject<ScrollFollow>): () => void {
   let viewBottom = log.getBoundingClientRect().bottom;
   const handleResize = () => {
     const previousViewBottom = viewBottom;
     viewBottom = log.getBoundingClientRect().bottom;
     const retryBottom = log.querySelector(RETRY_BUTTON_SELECTOR)?.getBoundingClientRect().bottom;
     const retryWasCovered = retryBottom !== undefined && wasJustCovered(retryBottom, previousViewBottom, viewBottom);
-    if (isFollowingRef.current || retryWasCovered) scrollToEnd(log);
+    if (followRef.current.isFollowing || retryWasCovered) scrollToEnd(log, followRef);
   };
   const resizeObserver = new ResizeObserver(handleResize);
   resizeObserver.observe(log);
@@ -24,21 +26,21 @@ function keepEndInViewOnResize(log: HTMLElement, isFollowingRef: RefObject<boole
 
 export function useConversationScroll(conversation: Conversation) {
   const logRef = useRef<HTMLDivElement>(null);
-  const isFollowingRef = useRef(true);
+  const followRef = useRef(INITIAL_FOLLOW);
 
   const trackScroll = () => {
-    if (logRef.current) isFollowingRef.current = isAtEnd(logRef.current);
+    if (logRef.current) followRef.current = followAfterScroll(followRef.current, logRef.current);
   };
 
   useLayoutEffect(() => {
     if (!logRef.current) return;
-    if (forcesScrollToEnd(conversation)) isFollowingRef.current = true;
-    if (isFollowingRef.current) scrollToEnd(logRef.current);
+    if (forcesScrollToEnd(conversation)) followRef.current = { ...followRef.current, isFollowing: true };
+    if (followRef.current.isFollowing) scrollToEnd(logRef.current, followRef);
   }, [conversation]);
 
   useEffect(() => {
     if (!logRef.current) return;
-    return keepEndInViewOnResize(logRef.current, isFollowingRef);
+    return keepEndInViewOnResize(logRef.current, followRef);
   }, []);
 
   return { logRef, trackScroll };

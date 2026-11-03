@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { INITIAL_CONVERSATION, withCustomerMessage, withFailure, withReply } from "./conversation";
-import { forcesScrollToEnd, isAtEnd, wasJustCovered } from "./conversation-scroll";
+import { followAfterScroll, forcesScrollToEnd, isAtEnd, wasJustCovered } from "./conversation-scroll";
 
 const WAITING = withCustomerMessage(INITIAL_CONVERSATION, "Oi");
 
@@ -11,6 +11,35 @@ describe("isAtEnd", () => {
 
   it("rejects a customer who scrolled up", () => {
     expect(isAtEnd({ scrollHeight: 1000, clientHeight: 400, scrollTop: 500 })).toBe(false);
+  });
+});
+
+describe("followAfterScroll", () => {
+  const FOLLOWING_AT_600 = { isFollowing: true, lastScrollTop: 600 };
+
+  it("keeps following when the view shrinks under an unchanged position", () => {
+    const measure = { scrollHeight: 1000, clientHeight: 300, scrollTop: 600 };
+    expect(followAfterScroll(FOLLOWING_AT_600, measure)).toEqual({ isFollowing: true, lastScrollTop: 600 });
+  });
+
+  it("stops following when the customer moves up", () => {
+    const measure = { scrollHeight: 1000, clientHeight: 400, scrollTop: 500 };
+    expect(followAfterScroll(FOLLOWING_AT_600, measure)).toEqual({ isFollowing: false, lastScrollTop: 500 });
+  });
+
+  it("keeps following when the browser pulls the position back to the new end", () => {
+    const measure = { scrollHeight: 1000, clientHeight: 500, scrollTop: 500 };
+    expect(followAfterScroll(FOLLOWING_AT_600, measure).isFollowing).toBe(true);
+  });
+
+  it("does not resume while the reader moves down short of the end", () => {
+    const measure = { scrollHeight: 1000, clientHeight: 400, scrollTop: 300 };
+    expect(followAfterScroll({ isFollowing: false, lastScrollTop: 100 }, measure).isFollowing).toBe(false);
+  });
+
+  it("resumes when the reader reaches the end", () => {
+    const measure = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    expect(followAfterScroll({ isFollowing: false, lastScrollTop: 100 }, measure).isFollowing).toBe(true);
   });
 });
 

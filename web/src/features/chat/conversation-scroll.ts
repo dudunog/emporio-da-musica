@@ -8,8 +8,21 @@ type ScrollMeasure = Readonly<{
   scrollTop: number;
 }>;
 
+export type ScrollFollow = Readonly<{
+  isFollowing: boolean;
+  lastScrollTop: number;
+}>;
+
 export function isAtEnd({ scrollHeight, clientHeight, scrollTop }: ScrollMeasure): boolean {
   return scrollHeight - clientHeight - scrollTop <= END_TOLERANCE_PX;
+}
+
+export function followAfterScroll({ isFollowing, lastScrollTop }: ScrollFollow, measure: ScrollMeasure): ScrollFollow {
+  const hasMovedUp = measure.scrollTop < lastScrollTop;
+  return {
+    isFollowing: isAtEnd(measure) || (isFollowing && !hasMovedUp),
+    lastScrollTop: measure.scrollTop,
+  };
 }
 
 export function forcesScrollToEnd(conversation: Conversation): boolean {
