@@ -55,11 +55,6 @@ class ChatResponse:
     reply: str
 
 
-@dataclass(frozen=True, slots=True)
-class UnavailableResponse:
-    reason: UnavailableReason
-
-
 @dataclass(slots=True)
 class Conversation:
     conversation_id: str = field(default_factory=lambda: str(uuid4()))
@@ -72,7 +67,7 @@ class Conversation:
 CONVERSATIONS: dict[str, Conversation] = {}
 CONVERSATIONS_BY_FIRST_MESSAGE: dict[str, Conversation] = {}
 
-app = FastAPI(title="Empório da Música")
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @cache
@@ -92,7 +87,8 @@ def unavailable_response(reason: UnavailableReason) -> JSONResponse:
 
 
 @app.exception_handler(RequestValidationError)
-def handle_invalid_request(_request: Request, _error: RequestValidationError) -> JSONResponse:
+@app.exception_handler(status.HTTP_400_BAD_REQUEST)
+def handle_invalid_request(_request: Request, _error: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=INVALID_REQUEST_BODY,
@@ -144,10 +140,7 @@ def store_turn(conversation: Conversation, message_id: str, agent_reply: AgentRe
     CONVERSATIONS[conversation.conversation_id] = conversation
 
 
-@app.post(
-    "/api/chat",
-    responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": UnavailableResponse}},
-)
+@app.post("/api/chat")
 def chat(chat_request: ChatRequest) -> ChatResponse:
     conversation = find_conversation(chat_request)
     with conversation.lock:

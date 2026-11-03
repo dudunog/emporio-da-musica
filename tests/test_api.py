@@ -31,6 +31,7 @@ from emporio_agent.api import (
     CONVERSATIONS_BY_FIRST_MESSAGE,
     MAX_MESSAGE_ID_LENGTH,
     MAX_MESSAGE_LENGTH,
+    Conversation,
     app,
     messages_client,
 )
@@ -361,6 +362,38 @@ def test_malformed_body_returns_422(
     assert fake_agent.calls == []
 
 
+@pytest.mark.parametrize(("length", "expected_status"), [(64, 200), (65, 422)])
+def test_message_id_limit_is_64_characters(
+    client: TestClient, fake_agent: FakeAgent, length: int, expected_status: int
+) -> None:
+    response = send(client, "Oi", message_id="x" * length)
+
+    assert response.status_code == expected_status
+    assert len(fake_agent.calls) == (1 if expected_status == 200 else 0)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"message": "\xff", "message_id": "' + MESSAGE_ID.encode() + b'"}',
+        b"[" * 20_000,
+    ],
+)
+def test_unparsable_body_bytes_return_the_fixed_422(
+    client: TestClient, fake_agent: FakeAgent, body: bytes
+) -> None:
+    response = client.post(CHAT_PATH, content=body, headers={"content-type": "application/json"})
+
+    assert response.status_code == 422
+    assert response.json() == INVALID_REQUEST_BODY
+    assert fake_agent.calls == []
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_documentation_routes_are_disabled(client: TestClient, path: str) -> None:
+    assert client.get(path).status_code == 404
+
+
 @pytest.mark.parametrize("reason", UNAVAILABLE_REASONS)
 def test_agent_unavailable_returns_503_with_reason_only(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, reason: UnavailableReason
@@ -446,6 +479,25 @@ def test_oversized_body_gets_the_same_small_response(
     assert response.status_code == 422
     assert response.content == b'{"detail":"invalid_request"}'
     assert fake_agent.calls == []
+
+
+def test_reply_that_cannot_be_serialized_returns_503_server_and_logs_only_the_type(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def reply_with_lone_surrogate(
+        _client: MessageCreator, history: list[MessageParam], _message: str, _today: date
+    ) -> AgentReply:
+        return AgentReply(text="\ud83d", tool_calls=(), history=history)
+
+    monkeypatch.setattr(api, "reply", reply_with_lone_surrogate)
+
+    with caplog.at_level(logging.INFO, logger=api.__name__):
+        response = send(client, CUSTOMER_TEXT)
+
+    assert response.status_code == 503
+    assert response.json() == {"reason": "server"}
+    assert "chat failed unexpectedly error=" in caplog.text
+    assert CUSTOMER_TEXT not in caplog.text
 
 
 def test_unexpected_exception_is_not_reraised_to_the_server_log(
@@ -615,6 +667,26 @@ def run_in_parallel(requests: list[Callable[[], httpx2.Response]]) -> list[httpx
     with ThreadPoolExecutor(max_workers=len(requests)) as executor:
         futures = [executor.submit(request) for request in requests]
         return [future.result(timeout=CONCURRENT_TIMEOUT_SECONDS) for future in futures]
+
+
+def test_first_messages_racing_with_same_id_share_one_conversation(
+    client: TestClient, fake_agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    both_requests_arrived = threading.Barrier(2, timeout=CONCURRENT_TIMEOUT_SECONDS)
+
+    def conversation_after_both_requests_arrive() -> Conversation:
+        both_requests_arrived.wait()
+        return Conversation()
+
+    monkeypatch.setattr(api, "Conversation", conversation_after_both_requests_arrive)
+
+    first, second = run_in_parallel(
+        [lambda: send(client, "Oi", message_id=MESSAGE_ID) for _ in range(2)]
+    )
+
+    assert [first.status_code, second.status_code] == [200, 200]
+    assert conversation_id_of(first) == conversation_id_of(second)
+    assert len(fake_agent.calls) == 1
 
 
 def test_messages_in_same_conversation_run_one_at_a_time(
