@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { INITIAL_CONVERSATION, withCustomerMessage, withFailure, withReply } from "./conversation";
 import { followAfterScroll, forcesScrollToEnd, isAtEnd, wasJustCovered } from "./conversation-scroll";
 
-const WAITING = withCustomerMessage(INITIAL_CONVERSATION, "Oi");
+const WAITING = withCustomerMessage(INITIAL_CONVERSATION, "Oi", "message-1");
 
 describe("isAtEnd", () => {
   it("accepts the end within the tolerance", () => {

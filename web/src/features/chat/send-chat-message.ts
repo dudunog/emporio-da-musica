@@ -4,9 +4,11 @@ import type { ChatReply, FailureReason } from "./conversation";
 const CHAT_ENDPOINT = "/api/chat";
 const FALLBACK_REASON: UnavailableReason = "connection";
 const REJECTED_STATUS = 422;
+const MESSAGE_ID_BYTES = 16;
 
 type ChatRequest = Readonly<{
   conversationId: string | null;
+  messageId: string;
   message: string;
 }>;
 
@@ -31,11 +33,11 @@ async function readJson(response: Response): Promise<unknown> {
   return response.json().catch(() => null);
 }
 
-async function postChatMessage({ conversationId, message }: ChatRequest): Promise<Response> {
+async function postChatMessage({ conversationId, messageId, message }: ChatRequest): Promise<Response> {
   return fetch(CHAT_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ conversation_id: conversationId, message }),
+    body: JSON.stringify({ conversation_id: conversationId, message_id: messageId, message }),
   });
 }
 
@@ -49,6 +51,11 @@ function parseChatReply(body: unknown): ChatReply {
     throw new ChatRequestError(FALLBACK_REASON);
   }
   return { conversationId: body.conversation_id, reply: body.reply };
+}
+
+export function createMessageId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(MESSAGE_ID_BYTES));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function failureReasonOf(error: unknown): FailureReason {

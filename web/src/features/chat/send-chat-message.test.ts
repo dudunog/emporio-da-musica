@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChatRequestError, failureReasonOf, sendChatMessage } from "./send-chat-message";
+import { ChatRequestError, createMessageId, failureReasonOf, sendChatMessage } from "./send-chat-message";
 
-const REQUEST = { conversationId: null, message: "Oi" };
+const REQUEST = { conversationId: null, messageId: "message-1", message: "Oi" };
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -20,18 +20,18 @@ describe("sendChatMessage", () => {
   it("posts the wire format to the same origin", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { conversation_id: "abc", reply: "Oi" }));
     vi.stubGlobal("fetch", fetchMock);
-    await sendChatMessage({ conversationId: "abc", message: "Tudo bem?" });
+    await sendChatMessage({ conversationId: "abc", messageId: "message-2", message: "Tudo bem?" });
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/chat");
     expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body)).toEqual({ conversation_id: "abc", message: "Tudo bem?" });
+    expect(JSON.parse(options.body)).toEqual({ conversation_id: "abc", message_id: "message-2", message: "Tudo bem?" });
   });
 
   it("sends a null conversation id on the first message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { conversation_id: "abc", reply: "Oi" }));
     vi.stubGlobal("fetch", fetchMock);
     await sendChatMessage(REQUEST);
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ conversation_id: null, message: "Oi" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ conversation_id: null, message_id: "message-1", message: "Oi" });
   });
 
   it("maps a successful answer", async () => {
@@ -64,6 +64,11 @@ describe("sendChatMessage", () => {
   it("reports a validation answer as a rejected message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(422, { detail: [] })));
     await expect(reasonOfFailure()).resolves.toBe("rejected");
+  });
+
+  it("creates a different id for each message", () => {
+    expect(createMessageId()).toMatch(/^[0-9a-f]{32}$/);
+    expect(createMessageId()).not.toBe(createMessageId());
   });
 
   it("carries the reason on the error type", () => {

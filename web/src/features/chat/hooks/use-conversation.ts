@@ -10,7 +10,7 @@ import {
   withRetryStarted,
   type Conversation,
 } from "../conversation";
-import { failureReasonOf, sendChatMessage } from "../send-chat-message";
+import { createMessageId, failureReasonOf, sendChatMessage } from "../send-chat-message";
 
 export function useConversation() {
   const [conversation, setConversation] = useState(INITIAL_CONVERSATION);
@@ -25,18 +25,18 @@ export function useConversation() {
     },
   });
 
-  const startRequest = (message: string, waitingConversation: Conversation) => {
-    if (isRequestOpenRef.current) return;
+  const startRequest = (waitingConversation: Conversation) => {
+    const customerMessage = lastCustomerMessage(waitingConversation);
+    if (isRequestOpenRef.current || customerMessage === null) return;
     isRequestOpenRef.current = true;
     setConversation(waitingConversation);
-    mutate({ conversationId: conversation.id, message });
+    mutate({ conversationId: waitingConversation.id, messageId: customerMessage.messageId, message: customerMessage.text });
   };
 
-  const send = (message: string) => startRequest(message, withCustomerMessage(conversation, message));
+  const send = (message: string) => startRequest(withCustomerMessage(conversation, message, createMessageId()));
 
   const retry = () => {
-    const message = lastCustomerMessage(conversation);
-    if (endsWithFailure(conversation) && message !== null) startRequest(message, withRetryStarted(conversation));
+    if (endsWithFailure(conversation)) startRequest(withRetryStarted(conversation));
   };
 
   return { conversation, send, retry };

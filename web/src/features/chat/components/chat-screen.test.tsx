@@ -44,8 +44,12 @@ async function settle(response: Response) {
   await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
 }
 
-function sentBodies(): unknown[] {
+function sentBodies(): Record<string, unknown>[] {
   return fetchMock.mock.calls.map(([, options]) => JSON.parse(String(options.body)));
+}
+
+function sentWithoutMessageId(): unknown[] {
+  return sentBodies().map(({ conversation_id, message }) => ({ conversation_id, message }));
 }
 
 function visibleAndAccessibleText(): string {
@@ -106,7 +110,7 @@ describe("ChatApp", () => {
     render(<ChatApp />);
     sendWithEnter("  Oi  ");
     await waitForRequest();
-    expect(sentBodies()).toEqual([{ conversation_id: null, message: "Oi" }]);
+    expect(sentWithoutMessageId()).toEqual([{ conversation_id: null, message: "Oi" }]);
     expect(composer().value).toBe("");
     expect(screen.getByText("Oi")).toBeTruthy();
   });
@@ -172,11 +176,12 @@ describe("ChatApp", () => {
     await settle(jsonResponse(200, { conversation_id: "second-id", reply: "Ok" }));
     sendWithEnter("Terceira");
     await waitForRequest();
-    expect(sentBodies()).toEqual([
+    expect(sentWithoutMessageId()).toEqual([
       { conversation_id: null, message: "Primeira" },
       { conversation_id: "first-id", message: "Segunda" },
       { conversation_id: "second-id", message: "Terceira" },
     ]);
+    expect(new Set(sentBodies().map(({ message_id }) => message_id)).size).toBe(3);
   });
 
   it.each([
@@ -245,10 +250,13 @@ describe("ChatApp", () => {
     await settle(jsonResponse(200, { conversation_id: "abc", reply: "Voltei" }));
     expect(screen.getAllByRole("article", { name: "Você" })).toHaveLength(1);
     expect(screen.getByText("Voltei")).toBeTruthy();
-    expect(sentBodies()).toEqual([
+    expect(sentWithoutMessageId()).toEqual([
       { conversation_id: null, message: "Oi" },
       { conversation_id: null, message: "Oi" },
     ]);
+    const [first, retried] = sentBodies();
+    expect(first.message_id).toEqual(expect.any(String));
+    expect(retried.message_id).toBe(first.message_id);
   });
 
   it("keeps the retry button only on the last failure", async () => {
