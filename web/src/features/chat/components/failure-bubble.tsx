@@ -2,7 +2,7 @@ import { RETRY_LABEL } from "../chat-copy";
 import { AssistantRow, type EntryBubbleProps } from "./assistant-row";
 
 const RETRY_BUTTON_CLASSES =
-  "relative mt-4 min-h-retry cursor-pointer rounded-action border border-line bg-action px-4 text-action font-medium text-failure transition-colors before:absolute before:-inset-retry-outset before:content-[''] hover:border-failure focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+  "relative mt-4 min-h-retry cursor-pointer rounded-action border border-line bg-action px-4 text-retry font-medium text-failure transition-colors before:absolute before:-inset-retry-outset before:content-[''] hover:border-failure focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 function FailureIcon() {
   return (

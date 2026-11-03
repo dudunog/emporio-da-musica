@@ -5,8 +5,8 @@ import { StoreAvatar } from "./store-avatar";
 
 function ChatHeader() {
   return (
-    <header className="relative z-10 shrink-0 border-b border-line bg-surface">
-      <div className="mx-auto flex h-header max-w-content items-center gap-3 px-page-x">
+    <header className="relative z-10 h-header shrink-0 border-b border-line bg-surface">
+      <div className="mx-auto flex h-full max-w-content items-center gap-3 px-page-x">
         <StoreAvatar placement="header" />
         <div className="min-w-0">
           <h1 className="text-title">{STORE_NAME}</h1>

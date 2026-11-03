@@ -8,7 +8,10 @@ export default function NotFoundPage() {
     <StoreNotice>
       <AssistantRow surfaceClasses="bg-agent text-ink">
         <p className="mb-2">{NOT_FOUND_MESSAGE}</p>
-        <Link href="/" className="underline underline-offset-2 hover:no-underline">
+        <Link
+          href="/"
+          className="relative inline-block underline underline-offset-2 before:absolute before:inset-x-0 before:-inset-y-3 before:content-[''] hover:no-underline"
+        >
           {BACK_TO_CHAT_LABEL}
         </Link>
       </AssistantRow>

@@ -61,7 +61,7 @@ export function Composer({ isWaiting, onSend, textareaRef }: ComposerProps) {
 
   return (
     <div className="relative shrink-0 bg-page">
-      <div className="pointer-events-none absolute inset-x-0 -top-4 h-4 bg-linear-to-t from-page to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 -top-4 h-4 bg-linear-to-t from-page to-transparent in-[main:has([role=log]:focus-visible)]:hidden" />
       <form onSubmit={handleSubmit} className="mx-auto max-w-content px-page-x pt-2 pb-composer-bottom">
         <div className={BOX_CLASSES}>
           <ComposerField draft={draft} onDraftChange={setDraft} onKeyDown={handleKeyDown} textareaRef={textareaRef} />
