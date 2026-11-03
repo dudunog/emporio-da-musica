@@ -27,8 +27,9 @@ describe("AssistantMarkdown", () => {
   });
 
   it("drops unsafe link targets", () => {
-    const link = renderMarkdown("[Clique](javascript:alert(1))").querySelector("a");
-    expect(link?.getAttribute("href") ?? "").not.toContain("javascript");
+    const container = renderMarkdown("[Clique](javascript:alert(1))");
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toBe("Clique");
   });
 
   it("keeps raw HTML as text", () => {

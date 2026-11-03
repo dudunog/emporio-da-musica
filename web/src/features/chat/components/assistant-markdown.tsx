@@ -30,6 +30,7 @@ function ListItem({ children }: ComponentProps<"li">) {
 }
 
 function ExternalLink({ children, href }: ComponentProps<"a">) {
+  if (!href) return children;
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:no-underline">
       {children}
