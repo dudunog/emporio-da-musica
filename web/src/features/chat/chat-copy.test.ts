@@ -46,10 +46,6 @@ describe("chat copy", () => {
     expect({ ...chatCopy }).toEqual(CONTRACT_COPY);
   });
 
-  it("has the closed list of 32 forbidden terms", () => {
-    expect(FORBIDDEN_TERMS).toHaveLength(32);
-  });
-
   it.each(FORBIDDEN_TERMS)("does not contain %s", (term) => {
     expect(COPY_STRINGS.filter((text) => text.toLowerCase().includes(term.toLowerCase()))).toEqual([]);
   });

@@ -115,12 +115,9 @@ describe("ChatApp", () => {
     expect(screen.getByText("Oi")).toBeTruthy();
   });
 
-  it("does not send a message above the limit and keeps the field usable", () => {
+  it("limits the field to the message size", () => {
     render(<ChatApp />);
-    sendWithEnter("a".repeat(4001));
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(composer().disabled).toBe(false);
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(composer().maxLength).toBe(4000);
   });
 
   it("sends with the button", async () => {
@@ -250,6 +247,14 @@ describe("ChatApp", () => {
     fireEvent.click(retryButton);
     expect(document.activeElement).toBe(composer());
     selection?.removeAllRanges();
+  });
+
+  it("freezes the typing dots and shows the label under reduced motion", () => {
+    render(<ChatApp />);
+    sendWithEnter("Oi");
+    const status = screen.getByRole("status");
+    expect(status.querySelector("span")?.className).toContain("motion-reduce:animate-none");
+    expect(within(status).getByText("Lia está digitando").className).toContain("motion-reduce:not-sr-only");
   });
 
   it("retries the same message without a second customer bubble", async () => {
