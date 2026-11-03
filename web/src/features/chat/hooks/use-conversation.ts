@@ -17,6 +17,7 @@ export function useConversation() {
   const isRequestOpenRef = useRef(false);
   const { mutate } = useMutation({
     mutationFn: sendChatMessage,
+    networkMode: "always",
     onSuccess: (chatReply) => setConversation((current) => withReply(current, chatReply)),
     onError: (error) => setConversation((current) => withFailure(current, failureReasonOf(error))),
     onSettled: () => {

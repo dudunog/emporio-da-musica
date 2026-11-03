@@ -1,3 +1,4 @@
+import { onlineManager } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FAILURE_MESSAGES, GREETING } from "../chat-copy";
@@ -73,7 +74,10 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  onlineManager.setOnline(true);
+  vi.unstubAllGlobals();
+});
 
 describe("ChatApp", () => {
   it("opens with the store identity, the greeting and focus on the composer", () => {
@@ -202,6 +206,18 @@ describe("ChatApp", () => {
     await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
     expect(screen.getByRole("alert").textContent).toBe(FAILURE_MESSAGES.connection);
     expectNoForbiddenTerms();
+  });
+
+  it("shows the connection text instead of waiting forever when the browser is offline", async () => {
+    onlineManager.setOnline(false);
+    render(<ChatApp />);
+    sendWithEnter("Oi");
+    const { reject } = await waitForRequest();
+    act(() => reject(new TypeError("Failed to fetch")));
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(screen.getByRole("alert").textContent).toBe(FAILURE_MESSAGES.connection);
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it("retries the same message without a second customer bubble", async () => {
