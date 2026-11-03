@@ -33,9 +33,9 @@ Edite `.env` e cole a chave em `ANTHROPIC_API_KEY`. A aplicação são dois proc
 
 Abra http://localhost:3000.
 
-O agente responde sem o Next.js. Com o Terminal 1 no ar: `curl -s -X POST http://127.0.0.1:8000/api/chat -H 'content-type: application/json' -d '{"conversation_id":null,"message_id":"1","message":"Qual o endereço da loja?"}'`. Repetir o mesmo `message_id` devolve a resposta guardada.
+O agente responde sem o Next.js. Com o Terminal 1 no ar: `curl -s -X POST http://127.0.0.1:8000/api/chat -H 'content-type: application/json' -d '{"conversation_id":null,"message_id":"1","message":"Qual o endereço da loja?"}'`. Use um `message_id` novo a cada pergunta: repetir o mesmo devolve a resposta guardada.
 
-Se a porta 3000 estiver ocupada, o Next.js sobe na seguinte livre, então confira a porta impressa no terminal. Para escolher a porta, rode `pnpm --dir web dev --port 3100` e abra http://localhost:3100; se ela estiver ocupada, o comando termina com `EADDRINUSE`. Para mudar a porta da API, use `--port 8010` no primeiro comando e `API_ORIGIN=http://127.0.0.1:8010 pnpm --dir web dev` no segundo.
+Se outro app já escuta em `127.0.0.1:3000`, o Next.js sobe na porta seguinte livre. Se ele escuta em todas as interfaces (`*:3000`, o padrão do Node), o Next.js sobe em `127.0.0.1:3000` sem aviso e `localhost:3000` abre o outro app. Nos dois casos, abra a URL impressa no terminal. Para escolher a porta, rode `pnpm --dir web dev --port 3100` e abra http://localhost:3100; com `127.0.0.1:3100` ocupado, o comando termina com `EADDRINUSE`.
 
 | Variável | Obrigatória | Para que serve |
 |---|---|---|
@@ -265,7 +265,7 @@ Verificação: ruff, mypy, pytest, lint, `tsc`, Vitest e build passando, além d
 
 <!-- REVISAO-HUMANA -->
 
-O histórico local foi reorganizado antes do primeiro push para corrigir mensagens, corrigir o typecheck dos primeiros commits e dividir commits grandes, sem mudar a árvore final.
+O histórico local foi reorganizado antes do primeiro push: mensagens corrigidas, typecheck dos primeiros commits corrigido, valores falsos de teste com formato de chave trocados (nenhuma chave real entrou no histórico) e commits grandes divididos ou reordenados. A árvore final ficou idêntica a cada reorganização. Commits divididos ou movidos ficaram com a data do commit original ou do vizinho, por isso vários têm o mesmo horário.
 
 Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e `reply` falso atrás da API real. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
 
