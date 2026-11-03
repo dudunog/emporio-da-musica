@@ -2,76 +2,72 @@
 
 Agente de atendimento por texto da Empório da Música (loja fictícia de instrumentos musicais de Campo Grande/MS) que consulta catálogo, pedidos e políticas por ferramentas tipadas para responder clientes em uma tela de chat, feito para o desafio técnico de AI Engineer da Artefact.
 
+Python é a linguagem principal, como exige a única restrição técnica do enunciado: o agente, as ferramentas e toda a regra de negócio ficam em `emporio_agent/`. O TypeScript fica só na interface, em `web/`, que desenha a tela e envia as mensagens.
+
 <!-- SCREENSHOTS -->
 
 ## Como rodar
 
-Do clone à tela de chat leva menos de 3 minutos. Pré-requisitos: Python 3.12 (fixado em `.python-version`) e uv (`brew install uv` ou `pipx install uv`). Não é preciso ativar venv: todo comando passa por `uv run`.
+Do clone à tela de chat leva menos de 3 minutos. Medição de referência, na máquina de desenvolvimento e com os caches do uv e do pnpm vazios: 32 segundos de clone local, `uv sync`, `pnpm install` e `cp`, e 39 segundos até a tela responder 200. O único passo manual é colar a chave.
 
-A chave vem do console da Anthropic (console.anthropic.com), no menu de chaves de API. A conta precisa ter crédito.
+Pré-requisitos:
 
-Clone o repositório:
+- Python 3.12 (fixado em `.python-version`) e uv (`brew install uv` ou `pipx install uv`). Não é preciso ativar venv: todo comando Python passa por `uv run`.
+- Node.js 20.9 ou superior, o mínimo do Next.js 16 (testado com 24.20), e pnpm 9 (`npm install -g pnpm@9.0.0`; a versão está fixada em `web/package.json`).
+- Chave da Anthropic, criada no console (console.anthropic.com), no menu de chaves de API. A conta precisa ter crédito.
+
+Instale e configure:
 
 ```bash
 git clone <url-deste-repositorio> emporio-da-musica-agent
-```
-
-Entre na pasta:
-
-```bash
 cd emporio-da-musica-agent
-```
-
-Instale as dependências:
-
-```bash
 uv sync
-```
-
-Crie o arquivo de configuração:
-
-```bash
+pnpm --dir web install --frozen-lockfile
 cp .env.example .env
 ```
 
-Edite `.env` e cole a chave em `ANTHROPIC_API_KEY`. Depois suba a interface:
+Edite `.env` e cole a chave em `ANTHROPIC_API_KEY`. A aplicação são dois processos, então abra dois terminais na pasta do projeto.
 
-```bash
-uv run streamlit run app.py
-```
+- Terminal 1, a API com o agente: `uv run uvicorn emporio_agent.api:app --port 8000`
+- Terminal 2, a interface: `pnpm --dir web dev`
 
-Abra http://localhost:8501. O navegador não abre sozinho porque `.streamlit/config.toml` liga o modo `headless`.
+Abra http://localhost:3000.
+
+Se a porta 3000 estiver ocupada, rode `pnpm --dir web dev --port 3100` e abra http://localhost:3100. Confira a porta impressa no terminal: o Next.js pode subir mesmo com outro app em `127.0.0.1:3000`, e aí `localhost:3000` e `127.0.0.1:3000` abrem apps diferentes. Para mudar a porta da API, use `--port 8010` no primeiro comando e `API_ORIGIN=http://127.0.0.1:8010 pnpm --dir web dev` no segundo.
 
 | Variável | Obrigatória | Para que serve |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | sim | Chave da API da Anthropic |
-| `ANTHROPIC_MODEL` | não | Modelo do agente. Padrão: `claude-opus-5-5` |
+| `ANTHROPIC_API_KEY` | sim | Chave da API da Anthropic, lida do `.env` |
+| `ANTHROPIC_MODEL` | não | Modelo do agente, lido do `.env`. Padrão: `claude-opus-5-5` |
+| `API_ORIGIN` | não | Destino do rewrite do Next.js. Padrão: `http://127.0.0.1:8000`. Vem do ambiente de `pnpm --dir web dev`, não do `.env`, e em `pnpm --dir web build` fica gravada no build |
 
-Sem chave, ou com o valor de exemplo de `.env.example`, a tela abre normalmente. A primeira resposta vira a bolha "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos." com o botão "Tentar de novo", e o motivo técnico fica só no log do terminal.
-
-Medição de referência: clone local, `uv sync` com cache vazio e `cp` levaram 17 segundos na máquina de desenvolvimento. O único passo manual é colar a chave.
+Sem chave, ou com o valor de exemplo de `.env.example`, a tela abre normalmente. A primeira resposta vira a bolha "Nosso atendimento está indisponível neste momento. Tente de novo em alguns minutos." com o botão "Tentar de novo", e o motivo técnico fica só no log do terminal da API.
 
 ## Arquitetura
 
 ```mermaid
 flowchart TD
-    cliente[Cliente no navegador] --> app["app.py: tela Streamlit e estado da sessão"]
-    app -->|histórico, mensagem e data de hoje| agente["emporio_agent/agent.py: loop reply"]
-    agente -->|mensagens e definições de ferramentas| api[API da Anthropic]
-    api -->|texto ou pedido de ferramenta| agente
-    agente -->|nome, argumentos e data| ferramentas["emporio_agent/tools.py: dispatch_tool"]
+    navegador["Cliente no navegador"] --> next["web/: Next.js, tela de chat e rewrite de /api/chat"]
+    next -->|"POST /api/chat"| api["emporio_agent/api.py: FastAPI e histórico por conversa"]
+    api -->|"histórico, mensagem e data de hoje"| agente["emporio_agent/agent.py: loop reply"]
+    agente -->|"mensagens e definições de ferramentas"| anthropic["API da Anthropic"]
+    anthropic -->|"texto ou pedido de ferramenta"| agente
+    agente -->|"nome, argumentos e data"| ferramentas["emporio_agent/tools.py: dispatch_tool"]
     ferramentas --> catalogo["emporio_agent/catalog.py: SQLite em memória"]
     ferramentas --> politicas["emporio_agent/policies.py: seções do manual"]
-    catalogo --> csv[CSVs em data/]
-    politicas --> pdf[PDF do manual em data/]
+    catalogo --> csv["CSVs em data/"]
+    politicas --> pdf["PDF do manual em data/"]
 ```
 
-- `app.py` é o único arquivo que importa Streamlit: desenha a tela, guarda a sessão e traduz falhas em texto para o cliente.
+- `web/` é a única parte em TypeScript: desenha a tela, guarda as bolhas em estado React e traduz falhas em texto para o cliente. Preço, estoque, pedido e política não passam por lá como regra, só como texto da resposta.
+- `emporio_agent/api.py` é o único arquivo que importa FastAPI: recebe a mensagem, guarda o histórico por conversa e transforma falha do agente em 503 com `reason`.
 - `emporio_agent/agent.py` é o único arquivo do pacote que importa o SDK: monta o prompt, chama o modelo e roda o loop.
 - `emporio_agent/tools.py` tem os schemas JSON e o despacho nome para função. Valida argumentos e formata dinheiro e datas.
 - `emporio_agent/catalog.py` carrega os seis CSVs em SQLite e calcula preço, PIX, parcela, disponibilidade e prazos.
 - `emporio_agent/policies.py` extrai o PDF e divide o manual em dez seções.
-- Domínio e ferramentas não importam Streamlit nem o SDK. `tests/test_imports.py` trava essa regra.
+- Domínio e ferramentas não importam FastAPI nem o SDK. `tests/test_imports.py` trava essa regra.
+
+`POST /api/chat` recebe `conversation_id`, `message_id` e `message`, e devolve 200 com `conversation_id` e `reply`, 422 para mensagem em branco ou acima de 4.000 caracteres, ou 503 com `reason` (`authentication`, `connection`, `rate_limit` ou `server`), sem nada técnico no corpo. O log tem uma linha por mensagem, com o id da conversa, os nomes das ferramentas e se houve erro, nunca argumentos nem texto do cliente.
 
 | Ferramenta | Quando é usada | O que devolve |
 |---|---|---|
@@ -82,7 +78,7 @@ flowchart TD
 | `get_store_info()` | Endereço, contatos, horário ou pedido para falar com uma pessoa | Endereço, telefone, WhatsApp, e-mail, horários e dados da empresa |
 | `get_policy(topic: enum)` | Pagamento, troca, frete, promoção, garantia, privacidade e demais regras do manual | Texto da seção pedida. `topic` é um enum com as dez seções do manual |
 
-O loop usa `tool_choice` automático e para em `MAX_TOOL_ROUNDS = 8`, quando devolve um texto de contingência com o WhatsApp da loja. `?` marca argumento que aceita `null`. Falha de ferramenta volta ao modelo como `tool_result` com `is_error`, sem interromper a conversa, e o prompt manda dizer ao cliente que não conseguiu consultar e oferecer o contato da equipe. Falha da API vira `AgentUnavailableError`, que a tela mostra como bolha de erro em pt-BR. Não há streaming porque as respostas são curtas (o prompt limita a nove linhas); o custo disso está nas limitações.
+O loop usa `tool_choice` automático e para em `MAX_TOOL_ROUNDS = 8`, quando devolve um texto de contingência com o WhatsApp da loja. `?` marca argumento que aceita `null`. Falha de ferramenta volta ao modelo como `tool_result` com `is_error`, sem interromper a conversa, e o prompt manda dizer ao cliente que não conseguiu consultar e oferecer o contato da equipe. Falha da API vira `AgentUnavailableError`, que a API devolve como 503 e a tela mostra como bolha de erro em pt-BR. Não há streaming porque as respostas são curtas (o prompt limita a nove linhas); o custo disso está nas limitações.
 
 ## Decisões técnicas
 
@@ -104,7 +100,7 @@ Escolhi o SDK oficial `anthropic` em vez de um framework porque há um agente, u
 
 ### Por que RAG com vector store não foi necessário e quando passaria a ser
 
-O manual tem 8 páginas e 10.724 caracteres depois da extração em `emporio_agent/policies.py`, o que dá cerca de 3 mil tokens. É estimativa de 3,5 a 4 caracteres por token; a contagem exata com `count_tokens` depende da chave. A [Anthropic](https://www.anthropic.com/news/contextual-retrieval) indica que, abaixo de 200 mil tokens (cerca de 500 páginas), a base inteira pode ir no prompt, sem RAG. O manual fica mais de 60 vezes abaixo disso.
+O manual tem 8 páginas e 10.715 caracteres nas dez seções extraídas por `emporio_agent/policies.py`, o que dá cerca de 3 mil tokens. É estimativa de 3,5 a 4 caracteres por token; a contagem exata com `count_tokens` depende da chave. A [Anthropic](https://www.anthropic.com/news/contextual-retrieval) indica que, abaixo de 200 mil tokens (cerca de 500 páginas), a base inteira pode ir no prompt, sem RAG. O manual fica mais de 60 vezes abaixo disso.
 
 Escolhi `get_policy(topic)` com enum de seções em vez de vector store porque as dez seções do manual já são os tópicos que um cliente pergunta, e consulta por nome devolve sempre o mesmo texto. Também não coloquei o manual inteiro no prompt: o modelo recebe só as seções que pede. Desvantagem: se o modelo escolher o tópico errado, a resposta sai sem a regra certa. Aceita porque os dez tópicos têm nome claro e a descrição da ferramenta aponta os casos ambíguos, como defeito, que pede `exchanges_returns` e `warranty`.
 
@@ -120,39 +116,49 @@ Mesmo nesses casos, catálogo e pedidos continuariam em consulta exata. O RAG en
 
 ### Modelo e provedor
 
-Escolhi `claude-opus-5-5` com o SDK `anthropic` 2.3.0 e effort `low` em vez de modelo de outro provedor pago ou modelo local via Ollama porque o agente depende de seguir regras longas de persona e escopo em pt-BR e de gerar argumentos válidos com `strict: true`. Desvantagem: custo por chamada, dependência de um provedor e nenhuma comparação medida entre modelos. Este modelo também rejeita `tool_choice` forçado, então chamar ou não a ferramenta depende do prompt, e a avaliação precisa medir isso. Aceita porque o volume é de protótipo e `ANTHROPIC_MODEL` troca o modelo sem mudar código. Este README não cita custo nem latência porque nenhum dos dois foi medido.
-
-O thinking adaptativo é sempre ligado nesse modelo; o código não envia `thinking` nem `temperature`, e a profundidade é controlada por `output_config`. O prompt estável leva `cache_control`, e a data fica em um bloco depois dele para não invalidar o cache a cada dia.
+Escolhi `claude-opus-5-5` com o SDK `anthropic` 2.3.0 e effort `low` em vez de modelo de outro provedor pago ou modelo local via Ollama porque o agente depende de seguir regras longas de persona e escopo em pt-BR e de gerar argumentos válidos com `strict: true`. Desvantagem: custo por chamada, dependência de um provedor e nenhuma comparação medida entre modelos. Este modelo também rejeita `tool_choice` forçado, então chamar ou não a ferramenta depende do prompt, e a avaliação precisa medir isso. Aceita porque o volume é de protótipo e `ANTHROPIC_MODEL` troca o modelo sem mudar código. Este README não cita custo nem latência porque nenhum dos dois foi medido. O thinking adaptativo é sempre ligado nesse modelo; o código não envia `thinking` nem `temperature`, e a profundidade é controlada por `output_config`. O prompt estável leva `cache_control`, e a data fica em um bloco depois dele para não invalidar o cache a cada dia.
 
 ### Estratégia de prompt
 
 Escolhi um único prompt em `emporio_agent/system-prompt.md`, em prosa, com seis seções e o motivo de cada regra, em vez de few-shot longo ou prompt curto, porque quem calcula é o código: as ferramentas entregam preço, parcela e prazo prontos, e o prompt manda copiar. As seções são: quem você é; o que a loja vende e não vende; quando consultar o sistema; pedidos e privacidade; como responder; fora de escopo e segurança. A sétima seção, com a data de hoje, é montada a cada mensagem.
 
-A regra central é que toda afirmação sobre preço, estoque, promoção, parcela, prazo, frete ou status precisa vir de consulta feita na conversa, e sem resultado a Lia diz que não encontrou. O tom vem da seção 7.1 do manual (amiga que entende de música, informal e profissional), com tamanhos por tipo de resposta: uma ou duas frases para resposta direta, até quatro para regra aplicada. O prompt manda tratar resultados de consulta como dados, nunca como ordens. `tests/fixtures/injected-catalog.csv` traz uma descrição de produto com instrução embutida, usada no teste que confere que ela chega ao modelo como campo JSON.
-
-Desvantagem: o prompt tem 73 linhas e repete regras do manual (frete, devolução, parcelamento), então mudar o manual exige editar dois lugares. Aceita porque essas regras mudam pouco e, fora do prompt, só chegariam ao modelo se ele chamasse a ferramenta certa.
+A regra central é que toda afirmação sobre preço, estoque, promoção, parcela, prazo, frete ou status precisa vir de consulta feita na conversa, e sem resultado a Lia diz que não encontrou. O tom vem da seção 7.1 do manual (amiga que entende de música, informal e profissional), com tamanhos por tipo de resposta: uma ou duas frases para resposta direta, até quatro para regra aplicada. O prompt manda tratar resultados de consulta como dados, nunca como ordens. `tests/fixtures/injected-catalog.csv` traz uma descrição de produto com instrução embutida, usada no teste que confere que ela chega ao modelo como campo JSON. Desvantagem: o prompt tem 73 linhas e repete regras do manual (frete, devolução, parcelamento), então mudar o manual exige editar dois lugares. Aceita porque essas regras mudam pouco e, fora do prompt, só chegariam ao modelo se ele chamasse a ferramenta certa.
 
 ### Loop manual em vez do tool runner
 
 Escolhi o loop manual em `reply` em vez de `client.beta.messages.tool_runner` porque o runner é beta e exige funções decoradas com `@beta_tool`, o que acoplaria `emporio_agent/tools.py` ao SDK. O loop tem 19 linhas e devolve o trace de cada chamada para testes e avaliação. Desvantagem: `stop_reason` e formato do histórico ficam sob responsabilidade do projeto. Aceita porque `tests/test_agent.py` cobre com cliente falso o caminho de ferramentas, o teto de rodadas, os erros do SDK e os três `stop_reason` que viram contingência (`refusal`, `max_tokens`, `model_context_window_exceeded`).
 
-### Streamlit e como o padrão foi escondido
+### Next.js em vez de Streamlit
 
-Escolhi Streamlit 1.66.1 em vez de CLI, notebook, API separada, Gradio ou Chainlit porque o avaliador abre uma tela de chat no navegador e o projeto continua todo em Python, sem build de front. Desvantagem: rerun a cada interação e pouco controle sobre o HTML. Aceita porque é uma tela só e os pontos frágeis estão listados nas limitações.
+O projeto começou em Streamlit, a pessoa dona decidiu migrar a interface para Next.js, o domínio foi reaproveitado e a validação foi refeita.
 
-Para a tela não parecer Streamlit:
+Escolhi Next.js 16 com React 19 em vez de manter o Streamlit porque React dá controle direto do HTML, e os problemas abertos da tela anterior vinham da falta dele: rótulo fixo em inglês para leitor de tela em cada bolha, CSS preso a seletores internos de uma versão fixada e flash branco na carga do tema escuro. Desvantagem: segunda linguagem, segundo gerenciador de pacotes e dois processos para subir. Aceita porque o TypeScript fica só na interface, e o agente e toda a regra de negócio continuam em Python, a linguagem principal que o enunciado exige. A saudação e o limite de 4.000 caracteres existem nos dois lados, e `tests/test_api.py` confere que a saudação é idêntica.
 
-- `.streamlit/config.toml` define temas claro e escuro com a paleta âmbar, fonte Inter, raios próprios, `toolbarMode = "minimal"` e `showErrorDetails = "none"`.
-- `ui/styles.css` esconde cabeçalho, menu, botão de deploy e indicador de execução, e redesenha bolhas e composer.
-- `app.py` usa `st.html` para cabeçalho com avatar, bolha do cliente, indicador de digitação e bolha de erro, sem título, spinner ou barra lateral do Streamlit. O texto do cliente é escapado com `html.escape` e aparece sempre literal.
-- `ui/chat-behavior.js` define `lang="pt-BR"` e, com um `MutationObserver`, mantém em português o nome acessível do botão de envio, o link de pular conteúdo e o diálogo nativo de queda de conexão. O script devolve o foco ao campo quando ele volta a ficar utilizável e no clique em "Tentar de novo", sem mexer na rolagem, e impede o diálogo de fechar com Esc ou clique fora. Só o envio de uma mensagem e o botão "Tentar de novo" que acabou de surgir rolam a conversa até o fim, mesmo para quem está lendo acima, porque o erro pede ação. Nada mais puxa a tela de quem voltou a ler acima, nem resposta comum, nem volta da conexão. Com o botão na tela, o campo que cresce só rola a conversa se fosse cobrir o botão. A cada rolagem, o script dispara `focus` em `.stMain`, que faz o acompanhamento nativo do Streamlit renovar a altura guardada; sem isso, o primeiro giro de roda depois de voltar ao fim podia ser desfeito.
-- `as_markdown` em `app.py`, usado só nas respostas da Lia, escapa `$` para o Streamlit não ler preços como LaTeX e usa espaço inquebrável entre `R$` e o valor.
+### API separada mínima com FastAPI
 
-### Histórico na sessão
+Escolhi uma API de uma rota com FastAPI em vez de reescrever o agente em TypeScript nas rotas do Next.js, o que quebraria a restrição do enunciado, ou de usar o servidor HTTP da biblioteca padrão, porque o Next.js só alcança o agente por HTTP e o FastAPI resolve o contrato com pouco código: a anotação do corpo gera o 422, `def` síncrono roda em thread pool sem reescrever o agente e o `TestClient` testa tudo sem abrir porta. Desvantagem: duas dependências a mais (`fastapi` e `uvicorn`) e um processo a mais. Aceita porque `emporio_agent/api.py` tem cerca de 170 linhas e o domínio não importa nada dela.
 
-Escolhi guardar o histórico em `st.session_state` em vez de SQLite ou arquivo porque o enunciado pede persistência só se fizer sentido e um atendimento por texto cabe em uma sessão. Persistir conversa também significaria guardar e-mail e telefone sem política de retenção. Desvantagem: recarregar a página apaga a conversa. Aceita porque a Lia recupera o pedido com o número e o contato, sem depender de memória. Para persistir, seria preciso uma tabela de mensagens por cliente verificado, que depende de resolver a verificação descrita nas limitações.
+### Histórico no servidor em vez de no navegador
 
-A sessão guarda duas listas: `history` com os blocos completos enviados à API e `transcript` com as bolhas da tela. A saudação fica só na segunda, porque a API exige que a primeira mensagem seja do usuário; o prompt declara que ela já foi exibida.
+Escolhi guardar o histórico da API em um dicionário em memória por `conversation_id` em vez de receber o histórico do navegador porque ele contém resultados de ferramentas: preços, promoções e dados de pedido. Vindo do navegador, o cliente poderia forjar um preço ou um pedido, e o modelo trataria aquilo como resultado de consulta. Um campo `history` no corpo é ignorado, e há teste para isso. Desvantagem: exige um único worker do uvicorn, reiniciar a API apaga tudo e recarregar a página (F5) reinicia a conversa, porque as bolhas ficam em estado React. Aceita porque o enunciado pede persistência só se fizer sentido, um atendimento por texto cabe em uma sessão e a Lia recupera o pedido com o número e o contato. Persistir significaria guardar e-mail e telefone sem política de retenção. Para isso, seria preciso uma tabela de mensagens por cliente verificado, que depende de resolver a verificação descrita nas limitações.
+
+O servidor nunca adota um id escolhido pelo cliente: id nulo ou desconhecido começa conversa nova, com uuid4 próprio. Falha do agente não altera o histórico, e um Lock por conversa serializa mensagens simultâneas. A saudação fica só na tela, porque a API do modelo exige que a primeira mensagem seja do usuário; o prompt declara que ela já foi exibida.
+
+### Idempotência por `message_id`
+
+Escolhi um `message_id` gerado no navegador por mensagem, igual no reenvio, em vez de confiar que reenviar é seguro, porque "Tentar de novo" depois de tempo excedido chegava com o turno já gravado: com um modelo simulado travado por 200 s, o histórico ficou com a mesma mensagem duas vezes. O reenvio do mesmo id devolve a resposta guardada sem chamar o modelo e, se a primeira chamada ainda estiver em curso, espera o Lock e devolve o resultado. Na primeira mensagem, quando o navegador ainda não tem `conversation_id`, o próprio `message_id` localiza a conversa. Desvantagem: a API só guarda o último id e a última resposta de cada conversa, então um id mais antigo seria tratado como mensagem nova. Aceita porque a interface só oferece reenvio na última bolha de erro.
+
+### Um único rewrite em vez de CORS
+
+Escolhi um rewrite só de `/api/chat` no Next.js, com destino em `API_ORIGIN`, em vez de o navegador chamar a porta da API com CORS, porque o navegador fala só com a própria origem e a API fica sem configuração de origem. Desvantagem: o rewrite corta em `experimental.proxyTimeout`, definido em 180 s porque o padrão de 30 s cortaria um turno com até 8 rodadas, e com a API parada ele responde um erro sem o JSON de `reason`. Aceita porque é o único endpoint e a interface trata qualquer resposta fora do contrato como falha de conexão.
+
+### Tailwind em vez de biblioteca de componentes
+
+Escolhi Tailwind 4 com os tokens em `web/src/app/globals.css`, mapeados em `@theme`, em vez de biblioteca de componentes, porque a tela é um chat com poucos elementos e paleta própria, e o tema escuro sai só com `light-dark()` e `color-scheme`. Medido com 500 ms de latência: a primeira pintura já vem no fundo do tema. Desvantagem: classes longas no JSX, cada controle (composer, indicador, foco) é escrito à mão, e `tailwindcss` e `@tailwindcss/turbopack` ficam fixados em 4.3.3, porque a 4.3.4 depende de um pacote que não está publicado. Aceita porque são poucos componentes e `web/src/features/chat/design-tokens.test.ts` lê os tokens e confere os pares de contraste.
+
+### React Query para o envio
+
+Escolhi `useMutation` do TanStack Query 5 em vez de `fetch` em `useEffect` ou biblioteca de estado, porque o envio é uma mutação com espera, falha e reenvio, e fica fora do ciclo de renderização. Desvantagem: uma dependência para uma única chamada, cujo modo de rede padrão já causou um defeito (descrito no uso de assistentes de IA). Ela só executa a chamada: a conversa fica em `useState` com funções puras em `web/src/features/chat/conversation.ts`, porque com `isPending` um quadro podia mostrar resposta e indicador juntos. Aceita porque é o padrão adotado pela pessoa dona e o custo é uma configuração, `networkMode: "always"`.
 
 ## Tratamento dos dados e suposições
 
@@ -173,7 +179,7 @@ A coluna de efeito descreve o que o código garante ou o que o prompt instrui. O
 | Data de recebimento | O CSV não tem data real de entrega | `received_on = estimated_delivery` para pedidos entregues | Vale sobre a data que o cliente declara, dito com educação. Pode errar se a entrega real divergiu da previsão |
 | Parcelamento | O manual não diz a base da parcela em promoção. A tabela da seção 3 cita mínimo de R$ 100,00 e a regra 3.1 detalha por faixa | Base é o preço promocional, e valem as faixas de 3.1 (R$ 80,00 de 4x a 6x, R$ 100,00 de 7x a 12x) | Produto 90: R$ 2.399,00 com 18% vira R$ 1.967,18, em 12x de R$ 163,93 |
 | Janela de defeito | Manual 4.2: 30 dias corridos "após a compra"; arrependimento conta do recebimento | Defeito conta de `order_date`, arrependimento de `received_on` | Pedido 7: comprado em 03/02/2026, recebido em 17/02/2026. Arrependimento até 24/02/2026, defeito até 05/03/2026. Entrega lenta consome a janela de defeito |
-| Data atual | Dados vão até março de 2026 | `date.today()` em `app.py`, injetada no prompt e passada às ferramentas, nunca vinda do modelo | Os 7 pedidos entregues estão com as duas janelas fechadas desde 06/03/2026. "Dentro do prazo" só aparece com data fixada nos testes |
+| Data atual | Dados vão até março de 2026 | `date.today()` em `emporio_agent/api.py`, injetada no prompt e passada às ferramentas, nunca vinda do modelo | Os 7 pedidos entregues estão com as duas janelas fechadas desde 06/03/2026. "Dentro do prazo" só aparece com data fixada nos testes |
 | Feriados | Manual: fechado em domingos e feriados, sem calendário | Não calculados | A Lia responde por dia da semana e diz "salvo feriado" ao falar da reabertura depois de domingo |
 | Tamanho do catálogo | Manual cita mais de 300 instrumentos; o CSV tem 65 produtos | O CSV é o catálogo | A Lia só oferece o que a busca devolve |
 
@@ -185,13 +191,19 @@ uv run ruff format --check .
 uv run mypy
 uv run pytest -q
 uv run pytest -m live -q
+pnpm --dir web lint
+pnpm --dir web exec tsc --noEmit
+pnpm --dir web test
+pnpm --dir web build
 ```
 
-Os quatro primeiros não chamam a API e rodam sem chave. `uv run pytest -q` executa 200 testes e deixa de fora os 23 ao vivo (`200 passed, 23 deselected`). Eles cobrem promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a regra de importação do domínio e os textos da interface. `tests/test_agent.py` importa `httpx2`, dependência transitiva do SDK, para construir os erros da API.
+Só `uv run pytest -m live -q` chama a API do modelo; os demais rodam sem chave. `uv run pytest -q` executa 274 testes e deixa de fora os 23 ao vivo (`274 passed, 23 deselected`). Eles cobrem promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a API com `TestClient` e a regra de importação do domínio. `tests/test_api.py` e `tests/test_agent.py` importam `httpx2`, dependência de desenvolvimento, porque o `TestClient` usa esse pacote e os erros do SDK são construídos com ele.
 
-`uv run pytest -m live -q` roda 23 testes de `tests/test_live_conversations.py` contra a API real e consome crédito: 8 conversas roteirizadas e 15 perguntas legítimas que a Lia não pode recusar. Sem chave, ou com o valor de exemplo, os 23 ficam como `skipped` (`23 skipped, 200 deselected`). Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. As conversas são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
+`pnpm --dir web test` executa 167 testes em 11 arquivos: lógica de envio, mapa de falhas, escape, `R$`, textos da interface (termos proibidos e nada em inglês), pares de contraste e os componentes principais. O script já é `vitest run`, então não passe `--run`: o pnpm 9.0.0 rejeita a opção. O navegador real ficou com os validadores, em baterias Playwright fora do repositório, com a API real e `reply` falso.
 
-A avaliação completa é um roteiro de 23 cenários que chama `reply` direto, com a data fixada. O roteiro e o harness ficaram fora deste repositório por decisão de escopo, então daqui só dá para rerodar o subconjunto acima.
+`uv run pytest -m live -q` roda 23 testes de `tests/test_live_conversations.py` contra a API real e consome crédito: 8 conversas roteirizadas e 15 perguntas legítimas que a Lia não pode recusar. Sem chave, ou com o valor de exemplo, os 23 ficam como `skipped` (`23 skipped, 274 deselected`). Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. As conversas são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
+
+A avaliação completa é um roteiro que chama `reply` direto, com a data fixada: os 23 cenários da tabela, mais 55 de escopo e 26 de comportamento de conversa, 152 execuções no total. O roteiro e o harness ficaram fora deste repositório por decisão de escopo, então daqui só dá para rerodar o subconjunto acima.
 
 | Cenário (críticos em negrito) | O que verifica |
 |---|---|
@@ -221,9 +233,9 @@ A avaliação completa é um roteiro de 23 cenários que chama `reply` direto, c
 
 Os 8 cenários críticos rodam 3 vezes e só passam com 3 de 3 (pass^3), porque o [τ-bench](https://arxiv.org/abs/2406.12045) mostra que agentes com as ferramentas certas ainda falham de forma intermitente e média esconde isso. Os outros 15 rodam uma vez, o que dá 39 execuções.
 
-A checagem de valores é determinística. Todo R$ da resposta precisa aparecer em um resultado de ferramenta da conversa, derivar dele por regra conhecida (PIX de 5%, parcela de 2x a 12x) ou ser constante do manual (35, 50, 80, 100, 500, 2.000). Turnos com resposta conhecida usam lista fechada de valores e lista de valores proibidos, como R$ 5.243,13 (PIX aplicado sobre a promoção do Taylor 110e) e R$ 9.774,15 (promoção expirada do Martin D-28). A versão do repositório, em `tests/money_grounding.py`, aceita só valores das ferramentas, constantes do manual e a diferença entre dois valores, sem PIX nem parcela derivados, porque as ferramentas já entregam esses números prontos. As demais checagens cobrem trajetória de ferramentas, regex, tamanho, termos em inglês ou nomes de campo na resposta e vazamento de dados de clientes.
+A checagem de valores é determinística. Todo R$ da resposta precisa aparecer em um resultado de ferramenta da conversa, derivar dele por regra conhecida (parcela de 2x a 12x, diferença entre dois valores) ou ser constante do manual (35, 50, 80, 100, 500, 2.000). Turnos com resposta conhecida usam lista fechada de valores e lista de valores proibidos, como R$ 5.243,13 (PIX aplicado sobre a promoção do Taylor 110e) e R$ 9.774,15 (promoção expirada do Martin D-28). A versão do repositório, em `tests/money_grounding.py`, aceita só valores das ferramentas, constantes do manual e a diferença entre dois valores, sem parcela derivada, porque as ferramentas já entregam esses números prontos. As demais checagens cobrem trajetória de ferramentas, regex, tamanho, termos em inglês ou nomes de campo na resposta e vazamento de dados de clientes.
 
-A tabela diz o que cada cenário verifica, sem resultado individual. Resultado de execução ao vivo só é citado aqui quando há registro da execução.
+A tabela diz o que cada cenário verifica, sem resultado individual. Sem chave, nenhuma conversa real rodou até agora: só C21 e C22, que testam falha de chave e de rede, foram executados, e o único contato com o modelo foi o 401 da chave inválida. Resultado de execução ao vivo só é citado aqui quando há registro da execução.
 
 <!-- RESULTADOS-AVALIACAO -->
 
@@ -237,49 +249,50 @@ A tabela diz o que cada cenário verifica, sem resultado individual. Resultado d
 | Reclamação sem registro persistente | A Lia diz que a reclamação será registrada e encaminhada com retorno em 24 horas úteis, como manda o manual, mas nada é gravado nem enviado. O cliente recebe uma promessa que nenhum sistema cumpre | Ferramenta de escrita que grave a reclamação e avise o responsável, com o protocolo na resposta |
 | Sem handoff real | Pedir atendente devolve WhatsApp e horário. O cliente repete tudo para a equipe, que não recebe contexto | Enviar à equipe um resumo da conversa no momento do encaminhamento |
 | Valores em R$ verificados só em teste | Um preço errado do modelo chega ao cliente, porque nada confere a resposta em tempo de execução | Rodar a checagem de `tests/money_grounding.py` dentro de `reply` e trocar a resposta por contingência quando falhar |
-| Histórico perdido no reload, no reinício do servidor e em queda maior que 120 s | Recarregar a página apaga a conversa, e o cliente repete número do pedido e contato. Se o servidor reiniciar com a página aberta, as bolhas continuam na tela, mas a mensagem seguinte recomeça a conversa. O mesmo ocorre depois de mais de 120 s sem conexão (`server.disconnectedSessionTTL`). Se a queda pegar uma mensagem em espera, ela se perde e a conversa também sai da tela, que volta só com a saudação | Tabela de mensagens por cliente verificado, com retenção definida. Depende da verificação |
-| Reenvio depois de perder a sessão | Com a bolha de erro aberta, se o servidor reiniciar ou a queda passar de 120 s, o clique em "Tentar de novo" volta a tela só com a saudação, e a mensagem some sem aviso | Guardar a mensagem pendente na tabela de mensagens por cliente verificado |
-| Sem streaming | A resposta aparece inteira de uma vez. Na espera há só o indicador de digitação e o campo bloqueado, e a espera soma cada rodada de ferramenta | Streaming do SDK na bolha, com o indicador só até o primeiro texto |
-| Chamada repetida na queda durante a espera | Se a conexão cair enquanto a Lia responde, a mensagem é processada de novo quando a conexão volta, e as duas chamadas ocorrem sobrepostas quando a volta vem antes do fim da primeira. Não há efeito na tela nem no histórico, porque a execução interrompida não grava nada. O custo é o modelo pago de novo e, com ferramentas, as consultas de leitura repetidas. Cada turno também executa o `app.py` uma vez a mais | Guardar a resposta em andamento fora da execução e reaproveitá-la na reconexão |
+| Histórico em memória | Reiniciar a API apaga todas as conversas sem aviso, e a tela continua cheia. A mensagem seguinte chega ao modelo sem histórico e com id novo: a Lia não lembra do que o cliente ainda vê na tela, e ele precisa repetir número do pedido e contato. Recarregar a página apaga a tela, com o mesmo efeito na conversa | Tabela de mensagens por cliente verificado, com retenção definida. Depende da verificação |
+| Dicionário de conversas sem expiração | Cada conversa fica em memória até reiniciar o processo, inclusive a abandonada por recarregar a página, e o histórico dela cresce sem teto. Medição aproximada com agente falso: 10 mil conversas com mensagens de 4.000 caracteres levaram o processo de 26 para 106 MB. Só resposta bem-sucedida grava, então o gasto com o modelo chega antes do fim da memória | Expirar conversas por inatividade ou guardá-las em banco |
+| Dois processos para subir | Com só a interface no ar, a tela abre normalmente e toda mensagem vira "Sem conexão agora. Verifique sua internet e tente de novo.", o que aponta para a internet do cliente quando o problema é a API parada. Quem roda precisa de dois terminais e lembrar de `API_ORIGIN` ao trocar a porta | Um comando único que sobe os dois e confere a API antes de abrir a tela |
+| Turno acima de 180 s | O rewrite corta a chamada em 180 s e o cliente vê a bolha de conexão, embora a API continue trabalhando (medido com resposta simulada de 190 s). O reenvio espera o Lock e devolve a resposta guardada pelo mesmo `message_id`, mas se ele também passar de 180 s a bolha volta. O SDK tem 60 s por requisição e 1 nova tentativa, e um turno tem até 8 rodadas, então o caso é possível | Enviar a resposta em partes ou consultar o andamento, sem depender de uma requisição longa |
+| Sem streaming | A resposta aparece inteira de uma vez. Na espera há só o indicador de digitação e o envio bloqueado, e a espera soma cada rodada de ferramenta | Streaming do SDK até a bolha, com o indicador só até o primeiro texto |
+| Só Chromium testado | Todas as baterias rodaram em Chromium com Playwright, com toque emulado. Safari, Firefox e teclado virtual real nunca foram exercitados, então um defeito de `dvh`, `light-dark()` ou do campo que cresce só apareceria na mão de um cliente | Rodar as mesmas baterias em WebKit e Firefox e testar em um celular real |
+| API sem autenticação nem limite de taxa | Qualquer processo na máquina pode chamar a porta da API e gastar crédito, e quem tiver um `conversation_id` continua a conversa de outra pessoa. O comando documentado escuta só em 127.0.0.1, então isso vale para uso local | Autenticação e limite de taxa antes de expor a API |
+| Mensagem cortada e Markdown restrito | Colar mais de 4.000 caracteres corta o texto sem aviso e a mensagem sai incompleta. Tabela e URL solta vindas do modelo aparecem como texto, porque não há `remark-gfm` | Avisar no limite e medir com o modelo se tabela aparece de verdade |
 | Sem feriados | Em feriado de dia útil a Lia informa o horário normal, e prazos em dias úteis não são calculados | Calendário de feriados de Campo Grande em `get_store_info` |
 | Catálogo em memória | SQLite carregado dos CSVs uma vez por processo: mudança de preço ou estoque só aparece depois de reiniciar, e pedido nenhum muda de situação | Trocar a origem por um banco da loja mantendo as assinaturas das ferramentas |
 | Limite fixo de saída | `MAX_OUTPUT_TOKENS = 1024` inclui o raciocínio. Se estourar, o cliente vê "Essa resposta ficou longa demais" e precisa perguntar de novo | Medir o consumo real por tipo de resposta e ajustar o limite |
 | Sem métricas de uso | O log registra só nome da ferramenta e erro. Custo e latência por conversa são desconhecidos | Registrar `usage` e tempo por turno, sem dados pessoais |
 | Sem avaliação do modelo em CI | Regressão de prompt só aparece para quem roda `uv run pytest -m live` à mão, com chave | Rodar a suíte ao vivo em CI a cada mudança de prompt, com orçamento definido |
-| Strings fixas do Streamlit | Leitor de tela anuncia "Chat message from user" e "Chat message from assistant" em inglês em cada bolha, porque não há parâmetro para trocar. Com a conexão bloqueada desde a carga, a tela fica em branco, sem diálogo, com o título "Streamlit" na aba, porque o script do app ainda não rodou | Estender `ui/chat-behavior.js`, que já traduz o botão de envio, o link de pular conteúdo e o diálogo de conexão, às bolhas. A tela em branco vem do HTML inicial do Streamlit, fora do alcance desse script |
-| Dependência de seletores da versão 1.66.1 | `ui/styles.css` depende de `data-testid`, do div interno sem identificador do composer e da caixa anônima do diálogo de conexão, e `ui/chat-behavior.js` depende do `focus` que o acompanhamento nativo escuta. Por isso `pyproject.toml` fixa `streamlit==1.66.1`, e atualizar o Streamlit pode quebrar o layout ou a rolagem sem erro | Comparar screenshots em CI a cada atualização |
-| Flash branco no primeiro carregamento no escuro | O tema e `ui/styles.css` chegam depois da primeira pintura. Em localhost, 2 de 3 cargas mostraram branco, por 83 e 183 ms; com 300 ms de latência e 200 KB/s, o branco durou cerca de 12 s | Investigar como servir a cor de fundo já no HTML inicial |
 
 ## Uso de assistentes de IA
 
-O código, os testes e este README foram escritos por agentes do Claude Code. A pessoa dona do projeto definiu a arquitetura (function calling com ferramentas fechadas, SQLite carregado dos CSVs, políticas por seção sem vector store, loop manual, Streamlit, Claude como modelo), os critérios de aprovação e o processo.
+O código, os testes e este README foram escritos por agentes do Claude Code. A pessoa dona do projeto definiu a arquitetura (function calling com ferramentas fechadas, SQLite carregado dos CSVs, políticas por seção sem vector store, loop manual, Claude como modelo, a interface inicial e depois a migração para Next.js), os critérios de aprovação e o processo.
 
 O workflow teve um Claude Code orquestrando etapas com agentes separados:
 
-1. Benchmarking: quatro relatórios (arquiteturas de agente, o que avaliadores valorizam, design de chat, limites do Streamlit).
-2. Critérios de sucesso: 138 critérios em dez frentes, cada um com o que vale nota 9 e como verificar. Conflitos entre frentes foram resolvidos em um contrato único.
-3. Escritores por frente: dados e ferramentas, agente, interface e acabamento visual.
+1. Benchmarking: quatro relatórios (arquiteturas de agente, o que avaliadores valorizam, design de chat, limites da primeira interface).
+2. Critérios de sucesso: 138 critérios em dez frentes, cada um com o que vale nota 9 e como verificar. Conflitos entre frentes foram resolvidos em um contrato único, e a migração ganhou um contrato próprio.
+3. Escritores por frente: dados e ferramentas, agente, API, interface e acabamento visual.
 4. Validadores isolados: sem contato com quem escreveu, com acesso só ao repositório, aos critérios e ao contrato, e obrigados a citar evidência. A frente só passa sem item errado e sem nota abaixo de 9. Reprovou, volta para o escritor com a lista de correções.
 
 O que foi rejeitado ou corrigido por causa dos validadores:
 
+- Indicador infinito sem rede: com o navegador offline, a tela ficava em "Lia está digitando" para sempre, com 0 POST e nenhuma bolha de erro, porque o `networkMode` padrão do React Query pausa a mutação quando `navigator.onLine` é falso. Os testes de falha anteriores bloqueavam a rota com `page.route`, que não muda esse valor. Virou `networkMode: "always"`, e a bolha de conexão aparece.
+- Texto do cliente no log: o handler registrava só o tipo da exceção, mas o Starlette relança e o uvicorn imprimia a mensagem. Uma mensagem com surrogate solto fazia e-mail e telefone aparecerem no terminal, além de responder 503 em vez de 422. Virou handler próprio de validação com corpo fixo e conversão da exceção dentro da rota.
+- Brecha na checagem de dinheiro: `check_money("Fica R$ 5.243,13 no PIX", ...)` devolvia `ok` no harness, porque ele derivava o desconto de PIX de todo preço, inclusive do promocional. Esse é o erro exato que o cenário C04 existe para pegar, e só a lista de valores proibidos o reprovava. A derivação saiu: o PIX só vale quando vem da ferramenta, em `pix_price_brl`, e esse valor agora reprova na checagem.
+- Mutações que os testes não pegavam: das 45 aplicadas em `web/`, 16 sobreviviam com 133 testes verdes, entre elas remover o `ResizeObserver` e fazer o hook de rolagem sempre puxar o leitor, porque só as funções puras eram testadas. Um teste de limite de mensagem continuava verde com o limite em 40.000. Entraram testes de comportamento em `web/src/features/chat/components/chat-behavior.test.tsx`. Na bateria rerodada, com 44 mutações porque o código de uma delas saiu, só sobrevive trocar `useLayoutEffect` por `useEffect`, que depende do tempo de pintura no navegador.
 - Parâmetro `query` em `search_products`: o contrato proibia esse nome, e outro validador reproduziu `query="Yamaha F310 violão"` devolvendo lista vazia, porque o filtro era um trecho contínuo do nome. Virou `name_contains`, com busca por palavras normalizadas.
 - Teste ao vivo chamando a API com a chave de exemplo: em clone limpo, depois de `cp .env.example .env`, `uv run pytest -q` terminou com `8 failed, 134 passed`, porque o `skipif` só testava a presença da variável. Os testes ao vivo passaram a exigir `-m live` e tratam o valor de exemplo como chave ausente.
 - Saudação no histórico: o contrato mandava enviá-la como primeiro turno do assistente, o validador questionou e a API exige que a primeira mensagem seja do usuário. A decisão foi revista: a saudação fica só na tela e o prompt declara que ela já foi exibida.
-- Quebra de linha entre `R$` e o valor: a 375 px de largura, "R$" terminava uma linha e "349,90" começava a seguinte, medido com `Range.getBoundingClientRect`. `as_markdown` passou a usar espaço inquebrável.
-- Botão de envio sem alvo de 44 px: tinha 40 por 40, e `elementFromPoint` a 2 px da borda não acertava o botão. Um `::before` em `ui/styles.css` ampliou a área de toque.
 
-Verificação: ruff, mypy e pytest passando, além de clone limpo e medições no navegador. Os comandos deste texto foram rerodados e as afirmações conferidas contra o código.
+Verificação: ruff, mypy, pytest, lint, `tsc`, Vitest e build passando, além de clone limpo e medições no navegador. Os comandos de execução e de teste deste texto foram rerodados e as afirmações conferidas contra o código.
 
 <!-- REVISAO-HUMANA -->
 
 O histórico local foi reorganizado antes do primeiro push para corrigir mensagens, corrigir o typecheck dos primeiros commits e dividir commits grandes, sem mudar a árvore final.
 
-Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e agente falso na interface. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
+Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e `reply` falso atrás da API real. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
 
-Rodadas de validação, todas sem chave: dados, ferramentas e agente com 4; interface com 6. A última correção de `ui/chat-behavior.js`, a que evita desfazer o primeiro giro de roda depois de voltar ao fim, veio depois dessas rodadas: foi medida só por quem a fez, de 23 giros desfeitos em 32 para 0 em 32, em conversa longa e com agente falso.
-
-As correções feitas depois da quarta rodada de dados, ferramentas e agente ainda não passaram por novo validador isolado.
+Rodadas de validação até agora, todas sem chave e sem conversa real com o modelo: 4 de dados, ferramentas e agente e 6 de interface antes da migração, e 1 depois dela, com 7 relatórios, que reprovou e gerou as correções citadas acima. As correções dessa rodada ainda não passaram por novo validador isolado.
 
 ## Conversas de exemplo
 
