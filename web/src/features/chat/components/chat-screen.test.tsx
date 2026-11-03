@@ -239,6 +239,19 @@ describe("ChatApp", () => {
     expect(document.activeElement).toBe(composer());
   });
 
+  it("gives a retry pressed with text selected the focus on the composer", async () => {
+    render(<ChatApp />);
+    sendWithEnter("Oi");
+    await settle(jsonResponse(503, { reason: "server" }));
+    const retryButton = screen.getByRole("button", { name: "Tentar de novo" });
+    retryButton.focus();
+    const selection = document.getSelection();
+    selection?.selectAllChildren(screen.getByText(GREETING));
+    fireEvent.click(retryButton);
+    expect(document.activeElement).toBe(composer());
+    selection?.removeAllRanges();
+  });
+
   it("retries the same message without a second customer bubble", async () => {
     render(<ChatApp />);
     sendWithEnter("Oi");

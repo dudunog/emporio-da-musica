@@ -12,11 +12,16 @@ import { ConversationLog } from "./conversation-log";
 function ChatScreen() {
   const { conversation, send, retry } = useConversation();
   const { logRef, trackScroll } = useConversationScroll(conversation);
-  const composerRef = useComposerFocus(conversation.isWaiting);
+  const { composerRef, focusComposer } = useComposerFocus(conversation.isWaiting);
+
+  const retryWithFocusOnComposer = () => {
+    focusComposer();
+    retry();
+  };
 
   return (
     <ChatFrame>
-      <ConversationLog conversation={conversation} logRef={logRef} onScroll={trackScroll} onRetry={retry} />
+      <ConversationLog conversation={conversation} logRef={logRef} onScroll={trackScroll} onRetry={retryWithFocusOnComposer} />
       <Composer isWaiting={conversation.isWaiting} onSend={send} textareaRef={composerRef} />
     </ChatFrame>
   );
