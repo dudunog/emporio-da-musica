@@ -68,6 +68,10 @@ describe("chat copy", () => {
     expect(chatCopy.GREETING.startsWith("Oi!")).toBe(true);
   });
 
+  it.each(["src/app/layout.tsx", "src/app/global-error.tsx"])("declares the page language in %s", (path) => {
+    expect(readFileSync(path, "utf8")).toContain('lang="pt-BR"');
+  });
+
   it("uses the avatar as the icon", () => {
     expect(readFileSync("src/app/icon.svg", "utf8")).toBe(readFileSync("public/avatar.svg", "utf8"));
   });
