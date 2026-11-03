@@ -7,7 +7,7 @@ import { FailureBubble } from "./failure-bubble";
 import { TypingIndicator } from "./typing-indicator";
 
 const LOG_CLASSES =
-  "relative flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto px-page-x py-4 *:w-full *:max-w-column [scrollbar-color:var(--border)_transparent] [scrollbar-gutter:stable_both-edges] [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
+  "relative flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto px-page-x py-4 *:w-full *:max-w-column scrollbar-quiet [scrollbar-gutter:stable_both-edges] [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
 
 function CustomerBubble({ text }: EntryBubbleProps) {
   return (

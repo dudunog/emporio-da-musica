@@ -131,7 +131,8 @@
   --content-width: 720px;
   --failure-icon: 16px;
   --ornament-size: 640px;
-  --ornament-offset: 192px;
+  --ornament-offset: calc(var(--ornament-size) * 0.3);
+  --ornament-in-conversation: block;
   --page-pad-x: var(--space-6);
   --header-height: 56px;
   --body-size: 15px;
@@ -153,8 +154,21 @@
     --bubble-max-agent: 100%;
     --retry-height: 44px;
     --ornament-size: 420px;
-    --ornament-offset: 126px;
   }
+}
+
+@media (max-width: 768px), (max-height: 480px) {
+  :root {
+    --ornament-in-conversation: none;
+  }
+}
+
+@utility scrollbar-quiet {
+  scrollbar-color: var(--border) transparent;
+}
+
+@utility ornament-in-conversation {
+  display: var(--ornament-in-conversation);
 }
 
 @layer base {
