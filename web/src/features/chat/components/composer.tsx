@@ -1,4 +1,4 @@
-import type { KeyboardEventHandler, Ref } from "react";
+import type { KeyboardEventHandler, MouseEvent, Ref } from "react";
 import { COMPOSER_LABEL, COMPOSER_PLACEHOLDER, SEND_LABEL } from "../chat-copy";
 import { MAX_MESSAGE_LENGTH } from "../composer-rules";
 import { useComposerDraft } from "../hooks/use-composer-draft";
@@ -9,7 +9,7 @@ const BOX_CLASSES =
 const FIELD_TEXT_CLASSES = "col-start-1 row-start-1 py-2 pr-2 text-composer whitespace-pre-wrap wrap-anywhere";
 
 const SEND_BUTTON_CLASSES =
-  "relative flex size-control shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand text-on-brand transition-[background-color,opacity,scale] before:absolute before:-inset-0.5 before:content-[''] not-disabled:hover:bg-brand-hover not-disabled:active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+  "relative flex size-control shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand text-on-brand transition-[background-color,opacity,scale] before:absolute before:-inset-0.5 before:content-[''] not-aria-disabled:hover:bg-brand-hover not-aria-disabled:active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus aria-disabled:cursor-not-allowed aria-disabled:opacity-50 motion-reduce:transition-none";
 
 type ComposerFieldProps = Readonly<{
   draft: string;
@@ -40,15 +40,26 @@ function ComposerField({ draft, onDraftChange, onKeyDown, textareaRef }: Compose
         aria-label={COMPOSER_LABEL}
         onChange={(event) => onDraftChange(event.target.value)}
         onKeyDown={onKeyDown}
-        className={`${FIELD_TEXT_CLASSES} h-full max-h-composer resize-none overflow-y-auto bg-transparent text-ink outline-none [scrollbar-width:thin] placeholder:text-placeholder`}
+        className={`${FIELD_TEXT_CLASSES} h-full max-h-composer resize-none scroll-pb-2.5 overflow-y-auto bg-transparent text-ink outline-none [scrollbar-width:thin] placeholder:text-placeholder`}
       />
     </div>
   );
 }
 
+function keepFieldFocus(event: MouseEvent) {
+  event.preventDefault();
+}
+
 function SendButton({ isDisabled }: Readonly<{ isDisabled: boolean }>) {
   return (
-    <button type="submit" disabled={isDisabled} aria-label={SEND_LABEL} className={SEND_BUTTON_CLASSES}>
+    <button
+      type="submit"
+      aria-disabled={isDisabled}
+      tabIndex={isDisabled ? -1 : 0}
+      onMouseDown={isDisabled ? keepFieldFocus : undefined}
+      aria-label={SEND_LABEL}
+      className={SEND_BUTTON_CLASSES}
+    >
       <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-5">
         <path d="M10 16V4.5M5 9.5l5-5 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>

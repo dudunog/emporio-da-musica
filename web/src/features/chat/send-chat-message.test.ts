@@ -66,6 +66,11 @@ describe("sendChatMessage", () => {
     await expect(reasonOfFailure()).resolves.toBe("rejected");
   });
 
+  it("reports a validation answer without JSON as a rejected message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Unprocessable", { status: 422 })));
+    await expect(reasonOfFailure()).resolves.toBe("rejected");
+  });
+
   it("creates a different id for each message", () => {
     expect(createMessageId()).toMatch(/^[0-9a-f]{32}$/);
     expect(createMessageId()).not.toBe(createMessageId());

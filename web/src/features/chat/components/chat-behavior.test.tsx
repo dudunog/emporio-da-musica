@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatApp } from "./chat-screen";
 
@@ -12,6 +12,8 @@ const pendingResponses: PendingResponse[] = [];
 const fetchMock = vi.fn(() => new Promise<Response>((resolve) => pendingResponses.push(resolve)));
 let resizeCallback: () => void = () => {};
 let logBottom = 720;
+let observedElements: Element[] = [];
+let disconnectCount = 0;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -50,6 +52,8 @@ beforeEach(() => {
   pendingResponses.length = 0;
   fetchMock.mockClear();
   logBottom = 720;
+  observedElements = [];
+  disconnectCount = 0;
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal(
     "ResizeObserver",
@@ -57,8 +61,12 @@ beforeEach(() => {
       constructor(callback: () => void) {
         resizeCallback = callback;
       }
-      observe() {}
-      disconnect() {}
+      observe(element: Element) {
+        observedElements.push(element);
+      }
+      disconnect() {
+        disconnectCount += 1;
+      }
     },
   );
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
@@ -120,6 +128,35 @@ describe("conversation scroll", () => {
     logBottom = 690;
     resizeCallback();
     expect(log.scrollTop).toBe(SCROLL_HEIGHT);
+  });
+
+  it("does not pull a reader who scrolled up when the composer grows", async () => {
+    const log = renderMeasuredLog();
+    sendWithEnter("Oi");
+    await settle(jsonResponse(200, { conversation_id: "abc", reply: "Resposta" }));
+    scrollReaderUp(log);
+    logBottom = 690;
+    resizeCallback();
+    expect(log.scrollTop).toBe(READER_POSITION);
+  });
+
+  it("does not pull a reader again once the retry button is already out of view", async () => {
+    const log = renderMeasuredLog();
+    sendWithEnter("Oi");
+    await settle(jsonResponse(503, { reason: "server" }));
+    logBottom = 650;
+    resizeCallback();
+    scrollReaderUp(log);
+    logBottom = 640;
+    resizeCallback();
+    expect(log.scrollTop).toBe(READER_POSITION);
+  });
+
+  it("observes the log and stops observing when it leaves the screen", () => {
+    const log = renderMeasuredLog();
+    expect(observedElements).toEqual([log]);
+    cleanup();
+    expect(disconnectCount).toBe(1);
   });
 });
 

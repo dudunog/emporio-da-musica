@@ -23,6 +23,10 @@ function composer(): HTMLTextAreaElement {
   return screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Sua mensagem" });
 }
 
+function sendButton(): HTMLElement {
+  return screen.getByRole("button", { name: "Enviar mensagem" });
+}
+
 function typeMessage(text: string) {
   fireEvent.change(composer(), { target: { value: text } });
 }
@@ -98,7 +102,7 @@ describe("ChatApp", () => {
   it.each(["   \n  ", "\t", "\u00a0 \u00a0", "\u0085", "\u200b"])("does not send the blank message %j and clears the field", async (blank) => {
     render(<ChatApp />);
     typeMessage(blank);
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Enviar mensagem" }).disabled).toBe(true);
+    expect(sendButton().getAttribute("aria-disabled")).toBe("true");
     fireEvent.keyDown(composer(), { key: "Enter" });
     await act(async () => {});
     expect(fetchMock).not.toHaveBeenCalled();
@@ -146,13 +150,26 @@ describe("ChatApp", () => {
     expect(bubble.className).toContain("whitespace-pre-wrap");
   });
 
+  it("keeps the field focused and sends nothing when the disabled send button is pressed", async () => {
+    render(<ChatApp />);
+    sendWithEnter("Primeira");
+    typeMessage("Rascunho");
+    expect(fireEvent.mouseDown(sendButton())).toBe(false);
+    fireEvent.click(sendButton());
+    await waitForRequest();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(composer().value).toBe("Rascunho");
+    await settle(jsonResponse(200, { conversation_id: "abc", reply: "Resposta" }));
+    expect(fireEvent.mouseDown(sendButton())).toBe(true);
+  });
+
   it("shows the typing status and blocks sending while keeping the draft editable", async () => {
     render(<ChatApp />);
     sendWithEnter("Primeira");
     expect(screen.getByRole("status").textContent).toContain("Lia está digitando");
     typeMessage("Rascunho");
     expect(composer().disabled).toBe(false);
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Enviar mensagem" }).disabled).toBe(true);
+    expect(sendButton().getAttribute("aria-disabled")).toBe("true");
     fireEvent.keyDown(composer(), { key: "Enter" });
     await waitForRequest();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -275,6 +292,19 @@ describe("ChatApp", () => {
     const [first, retried] = sentBodies();
     expect(first.message_id).toEqual(expect.any(String));
     expect(retried.message_id).toBe(first.message_id);
+  });
+
+  it("retries inside the same conversation after an earlier reply", async () => {
+    render(<ChatApp />);
+    sendWithEnter("Primeira");
+    await settle(jsonResponse(200, { conversation_id: "first-id", reply: "Ok" }));
+    sendWithEnter("Segunda");
+    await settle(jsonResponse(503, { reason: "server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    await waitForRequest();
+    const [, failed, retried] = sentBodies();
+    expect(retried).toEqual(failed);
+    expect(retried.conversation_id).toBe("first-id");
   });
 
   it("keeps the retry button only on the last failure", async () => {
