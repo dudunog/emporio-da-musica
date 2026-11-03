@@ -1,6 +1,5 @@
 import { RETRY_LABEL } from "../chat-copy";
-import { ASSISTANT_BUBBLE_CLASSES, AssistantRow } from "./assistant-row";
-import type { EntryBubbleProps } from "./conversation-log";
+import { AssistantRow, type EntryBubbleProps } from "./assistant-row";
 
 const RETRY_BUTTON_CLASSES =
   "relative mt-4 min-h-retry cursor-pointer rounded-action border border-line bg-action px-4 text-action font-medium text-failure transition-colors before:absolute before:-inset-retry-outset before:content-[''] hover:border-failure focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
@@ -17,20 +16,18 @@ function FailureIcon() {
 
 export function FailureBubble({ text, onRetry }: EntryBubbleProps) {
   return (
-    <AssistantRow>
-      <div className={`${ASSISTANT_BUBBLE_CLASSES} border border-failure bg-failure-surface text-ink`}>
-        <div role="alert" className="flex items-start gap-2">
-          <FailureIcon />
-          <p>{text}</p>
-        </div>
-        {onRetry && (
-          <div className="pl-6">
-            <button type="button" data-retry-button onClick={onRetry} className={RETRY_BUTTON_CLASSES}>
-              {RETRY_LABEL}
-            </button>
-          </div>
-        )}
+    <AssistantRow surfaceClasses="border border-failure bg-failure-surface text-ink">
+      <div role="alert" className="flex items-start gap-2">
+        <FailureIcon />
+        <p>{text}</p>
       </div>
+      {onRetry && (
+        <div className="pl-6">
+          <button type="button" data-retry-button onClick={onRetry} className={RETRY_BUTTON_CLASSES}>
+            {RETRY_LABEL}
+          </button>
+        </div>
+      )}
     </AssistantRow>
   );
 }

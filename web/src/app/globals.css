@@ -50,7 +50,7 @@
   --color-failure: var(--error);
   --color-focus: var(--focus);
 
-  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
 
   --text-body: var(--body-size);
   --text-body--line-height: var(--body-line);
@@ -74,13 +74,13 @@
   --spacing-6: var(--space-6);
   --spacing-page-x: var(--page-pad-x);
   --spacing-header: var(--header-height);
-  --spacing-content: 720px;
-  --spacing-column: calc(720px - 2 * var(--page-pad-x));
+  --spacing-content: var(--content-width);
+  --spacing-column: calc(var(--content-width) - 2 * var(--page-pad-x));
   --spacing-avatar-header: 36px;
   --spacing-avatar-bubble: 28px;
   --spacing-control: 40px;
   --spacing-retry: var(--retry-height);
-  --spacing-retry-outset: 3px;
+  --spacing-retry-outset: calc(var(--space-1) - 1px);
   --spacing-bubble-x: 14px;
   --spacing-bubble-y: 10px;
   --spacing-bubble-user: var(--bubble-max-user);
@@ -89,9 +89,11 @@
   --spacing-composer: min(232px, 40dvh);
   --spacing-composer-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
   --spacing-dot: 6px;
-  --spacing-failure-icon: 16px;
-  --spacing-failure-icon-top: calc((var(--body-line) - 16px) / 2);
-  --spacing-ornament: 640px;
+  --spacing-failure-icon: var(--failure-icon);
+  --spacing-failure-icon-top: calc((var(--body-line) - var(--failure-icon)) / 2);
+  --spacing-body-line: var(--body-line);
+  --spacing-ornament: var(--ornament-size);
+  --spacing-ornament-offset: var(--ornament-offset);
 }
 
 :root {
@@ -126,6 +128,10 @@
   --space-4: 16px;
   --space-6: 24px;
 
+  --content-width: 720px;
+  --failure-icon: 16px;
+  --ornament-size: 640px;
+  --ornament-offset: 192px;
   --page-pad-x: var(--space-6);
   --header-height: 56px;
   --body-size: 15px;

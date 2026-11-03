@@ -1,19 +1,50 @@
-import type { Ref } from "react";
-import { SEND_LABEL } from "../chat-copy";
+import type { KeyboardEventHandler, Ref } from "react";
+import { COMPOSER_LABEL, COMPOSER_PLACEHOLDER, SEND_LABEL } from "../chat-copy";
+import { MAX_MESSAGE_LENGTH } from "../composer-rules";
 import { useComposerDraft } from "../hooks/use-composer-draft";
-import { ComposerField } from "./composer-field";
 
 const BOX_CLASSES =
   "flex items-end rounded-composer border border-line bg-surface p-1 pl-4 focus-within:border-focus focus-within:shadow-composer-focus has-[button:focus-visible]:border-line has-[button:focus-visible]:shadow-none";
 
+const FIELD_TEXT_CLASSES = "col-start-1 row-start-1 py-2 pr-2 text-composer whitespace-pre-wrap wrap-anywhere";
+
 const SEND_BUTTON_CLASSES =
   "relative flex size-control shrink-0 cursor-pointer items-center justify-center rounded-full bg-brand text-on-brand transition-[background-color,opacity,scale] before:absolute before:-inset-0.5 before:content-[''] not-disabled:hover:bg-brand-hover not-disabled:active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+
+type ComposerFieldProps = Readonly<{
+  draft: string;
+  onDraftChange: (draft: string) => void;
+  onKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
+  textareaRef: Ref<HTMLTextAreaElement>;
+}>;
 
 type ComposerProps = Readonly<{
   isWaiting: boolean;
   onSend: (message: string) => void;
   textareaRef: Ref<HTMLTextAreaElement>;
 }>;
+
+function ComposerField({ draft, onDraftChange, onKeyDown, textareaRef }: ComposerFieldProps) {
+  return (
+    <div className="grid max-h-composer min-w-0 flex-1 overflow-hidden">
+      <div aria-hidden="true" className={`invisible ${FIELD_TEXT_CLASSES}`}>
+        {draft}{" "}
+      </div>
+      <textarea
+        ref={textareaRef}
+        rows={1}
+        value={draft}
+        maxLength={MAX_MESSAGE_LENGTH}
+        enterKeyHint="send"
+        placeholder={COMPOSER_PLACEHOLDER}
+        aria-label={COMPOSER_LABEL}
+        onChange={(event) => onDraftChange(event.target.value)}
+        onKeyDown={onKeyDown}
+        className={`${FIELD_TEXT_CLASSES} h-full max-h-composer resize-none overflow-y-auto bg-transparent text-ink outline-none [scrollbar-width:thin] placeholder:text-placeholder`}
+      />
+    </div>
+  );
+}
 
 function SendButton({ isDisabled }: Readonly<{ isDisabled: boolean }>) {
   return (

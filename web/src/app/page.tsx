@@ -1,4 +1,4 @@
-import { ChatApp } from "@/features/chat/components/chat-app";
+import { ChatApp } from "@/features/chat/components/chat-screen";
 
 export default function HomePage() {
   return <ChatApp />;

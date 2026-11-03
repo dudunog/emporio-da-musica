@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FAILURE_MESSAGES, GREETING } from "../chat-copy";
-import { ChatApp } from "./chat-app";
+import { ChatApp } from "./chat-screen";
 
 const DOM_FORBIDDEN_TERMS = [
   "Traceback", "Error", "Exception", "401", "403", "429", "500", "API", "Anthropic", "Claude", "chave", "token", "http", "authentication",

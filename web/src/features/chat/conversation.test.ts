@@ -4,6 +4,7 @@ import {
   INITIAL_CONVERSATION,
   endsWithFailure,
   lastCustomerMessage,
+  retryableEntryId,
   withCustomerMessage,
   withFailure,
   withReply,
@@ -57,6 +58,13 @@ describe("conversation", () => {
     const identifiers = answered.entries.map((entry) => entry.id);
     expect(new Set(identifiers).size).toBe(identifiers.length);
     expect(answered.entries.at(-1)?.id).toBeGreaterThan(failed.entries.at(-1)?.id ?? 0);
+  });
+
+  it("offers the retry only on a failure that is the last entry", () => {
+    const failed = withFailure(withCustomerMessage(INITIAL_CONVERSATION, "Oi"), "server");
+    expect(retryableEntryId(failed)).toBe(failed.entries.at(-1)?.id);
+    expect(retryableEntryId(withCustomerMessage(failed, "De novo"))).toBeNull();
+    expect(retryableEntryId(INITIAL_CONVERSATION)).toBeNull();
   });
 
   it("has no customer message at the start", () => {

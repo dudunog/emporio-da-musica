@@ -2,7 +2,7 @@ import { FAILURE_MESSAGES, GREETING, type UnavailableReason } from "./chat-copy"
 
 export type EntryKind = "customer" | "assistant" | "failure";
 
-export type ConversationEntry = Readonly<{
+type ConversationEntry = Readonly<{
   id: number;
   kind: EntryKind;
   text: string;
@@ -54,6 +54,10 @@ export function withFailure(conversation: Conversation, reason: UnavailableReaso
 
 export function endsWithFailure(conversation: Conversation): boolean {
   return conversation.entries.at(-1)?.kind === "failure";
+}
+
+export function retryableEntryId(conversation: Conversation): number | null {
+  return endsWithFailure(conversation) ? (conversation.entries.at(-1)?.id ?? null) : null;
 }
 
 export function withRetryStarted(conversation: Conversation): Conversation {

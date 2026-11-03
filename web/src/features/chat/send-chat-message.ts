@@ -4,7 +4,7 @@ import type { ChatReply } from "./conversation";
 const CHAT_ENDPOINT = "/api/chat";
 const FALLBACK_REASON: UnavailableReason = "connection";
 
-export type ChatRequest = Readonly<{
+type ChatRequest = Readonly<{
   conversationId: string | null;
   message: string;
 }>;
@@ -30,14 +30,11 @@ async function readJson(response: Response): Promise<unknown> {
   return response.json().catch(() => null);
 }
 
-async function postMessage({ conversationId, message }: ChatRequest): Promise<Response> {
-  const request = {
+async function postChatMessage({ conversationId, message }: ChatRequest): Promise<Response> {
+  return fetch(CHAT_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ conversation_id: conversationId, message }),
-  };
-  return fetch(CHAT_ENDPOINT, request).catch(() => {
-    throw new ChatUnavailableError(FALLBACK_REASON);
   });
 }
 
@@ -57,7 +54,7 @@ export function failureReasonOf(error: unknown): UnavailableReason {
 }
 
 export async function sendChatMessage(request: ChatRequest): Promise<ChatReply> {
-  const response = await postMessage(request);
+  const response = await postChatMessage(request);
   const body = await readJson(response);
   if (!response.ok) throw new ChatUnavailableError(parseFailureReason(body));
   return parseChatReply(body);

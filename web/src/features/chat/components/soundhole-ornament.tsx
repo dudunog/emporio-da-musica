@@ -16,7 +16,7 @@ export function SoundholeOrnament() {
       aria-hidden="true"
       viewBox="0 0 640 640"
       fill="none"
-      className="pointer-events-none absolute -right-48 -bottom-48 size-ornament stroke-ornament"
+      className="pointer-events-none absolute -right-ornament-offset -bottom-ornament-offset size-ornament stroke-ornament"
     >
       {ROSETTE_RINGS.map(({ radius, strokeWidth, dashArray }) => (
         <circle key={radius} cx="320" cy="320" r={radius} strokeWidth={strokeWidth} strokeDasharray={dashArray} />

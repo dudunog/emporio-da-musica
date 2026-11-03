@@ -7,6 +7,23 @@ const eslintConfig = defineConfig([
   ...nextTs,
   globalIgnores([".next/**", "next-env.d.ts"]),
   {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.*"],
+    rules: {
+      complexity: ["error", 6],
+      "max-depth": ["error", 2],
+      "max-lines": ["error", { max: 120, skipBlankLines: true }],
+      "max-lines-per-function": ["error", { max: 40, skipBlankLines: true, skipComments: true }],
+      "max-params": ["error", 4],
+      "no-console": "error",
+    },
+  },
+  {
+    files: ["src/features/chat/**/*.ts"],
+    ignores: ["**/*.test.*"],
+    rules: { "max-lines-per-function": ["error", { max: 30, skipBlankLines: true, skipComments: true }] },
+  },
+  {
     rules: {
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "import/no-default-export": "error",
