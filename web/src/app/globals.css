@@ -86,7 +86,7 @@
   --spacing-bubble-user: var(--bubble-max-user);
   --spacing-bubble-agent: min(var(--bubble-max-agent), 62ch);
   --spacing-list-indent: 20px;
-  --spacing-composer: min(232px, 40dvh);
+  --spacing-composer: min(216px, 40dvh);
   --spacing-composer-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
   --spacing-dot: 6px;
   --spacing-failure-icon: var(--failure-icon);
@@ -152,6 +152,8 @@
     --bubble-max-user: 85%;
     --bubble-max-agent: 100%;
     --retry-height: 44px;
+    --ornament-size: 420px;
+    --ornament-offset: 126px;
   }
 }
 
