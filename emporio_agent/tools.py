@@ -166,9 +166,9 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
     {
         "name": GET_STORE_INFO_TOOL,
         "description": (
-            "Return the store's address, landline phone, WhatsApp, e-mail, opening hours per day "
-            "and company data. Use it for address, contact and hours questions and whenever the "
-            "customer asks to talk to a person."
+            "Return the store's address, landline phone, WhatsApp, e-mail and opening hours per "
+            "day. Use it for address, contact and hours questions and whenever the customer asks "
+            "to talk to a person."
         ),
         "strict": True,
         "input_schema": {

@@ -98,7 +98,6 @@ class StoreInfo:
     email: str
     opening_hours: dict[str, str]
     founded: int
-    cnpj: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +214,7 @@ CATEGORY_IDS: dict[ProductCategory, int] = {
 CATEGORY_SLUGS: dict[int, ProductCategory] = {
     category_id: category for category, category_id in CATEGORY_IDS.items()
 }
+UNPRICED_STATUSES = frozenset({"discontinued", "coming_soon"})
 AVAILABILITY_BY_STATUS: dict[str, Availability] = {
     "discontinued": "discontinued",
     "coming_soon": "coming_soon",
@@ -286,7 +286,6 @@ STORE_INFO = StoreInfo(
         "domingo_e_feriados": "fechado",
     },
     founded=2008,
-    cnpj="12.345.678/0001-90",
 )
 
 CREATE_TABLES_SQL = """
@@ -563,7 +562,7 @@ def promotion_from_row(row: sqlite3.Row) -> Promotion | None:
 
 
 def price_quote_from_row(row: sqlite3.Row) -> PriceQuote:
-    if row["status"] == "discontinued":
+    if row["status"] in UNPRICED_STATUSES:
         return NO_PRICE_QUOTE
     return price_quote(brl_from_cents(row["price_cents"]), promotion_from_row(row))
 

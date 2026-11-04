@@ -206,10 +206,26 @@ def test_discontinued_product_with_stock_is_still_discontinued() -> None:
     assert "stock_quantity" not in asdict(ibanez)
 
 
-def test_coming_soon_product_is_marked_coming_soon() -> None:
+def test_coming_soon_product_has_no_sale_price() -> None:
     kala = get_product(130)
     assert kala is not None
     assert kala.availability == "coming_soon"
+    assert kala.list_price_brl is None
+    assert kala.promotional_price_brl is None
+    assert kala.pix_price_brl is None
+    assert kala.pix_note is None
+    assert kala.best_cash_price_brl is None
+    assert kala.max_installments is None
+    assert kala.installment_value_brl is None
+    assert kala.installment_rule_note is None
+
+
+def test_search_returns_coming_soon_product_without_price() -> None:
+    summaries = search_products("Kala KA-ABP", None, None, None)
+    kala = next(summary for summary in summaries if summary.product_id == 130)
+    assert kala.availability == "coming_soon"
+    assert kala.list_price_brl is None
+    assert kala.promotional_price_brl is None
 
 
 def test_get_product_returns_none_for_unknown_id() -> None:

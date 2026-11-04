@@ -166,6 +166,31 @@ def test_get_store_info_tool() -> None:
     assert "(67) 3321-4500" in content
     assert "(67) 3341-4444" in content
     assert "contato@emporiodamusica.com.br" in content
+    assert "cnpj" not in content
+    assert "12.345.678/0001-90" not in content
+
+
+def test_coming_soon_product_tools_carry_no_sale_price() -> None:
+    product = handler_payload("get_product", {"product_id": 130})
+    assert isinstance(product, dict)
+    assert product["availability"] == "coming_soon"
+    assert product["list_price_brl"] is None
+    assert product["pix_price_brl"] is None
+    assert product["max_installments"] is None
+    assert product["installment_value_brl"] is None
+    search_arguments: dict[str, object] = {
+        "name_contains": None,
+        "category": "ukuleles",
+        "min_price_brl": None,
+        "max_price_brl": None,
+    }
+    content = TOOL_HANDLERS["search_products"](search_arguments, TODAY)
+    summaries: list[dict[str, object]] = json.loads(content)
+    kala = next(summary for summary in summaries if summary["product_id"] == 130)
+    assert kala["list_price_brl"] is None
+    assert kala["promotional_price_brl"] is None
+    for amount in ("1.749,00", "1.661,55", "145,75"):
+        assert amount not in content
 
 
 def test_get_policy_tool() -> None:
