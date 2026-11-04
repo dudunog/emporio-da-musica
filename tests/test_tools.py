@@ -196,7 +196,10 @@ def test_tool_definitions_use_enums_and_short_descriptions() -> None:
     search_properties = definitions["search_products"]["input_schema"]["properties"]
     policy_properties = definitions["get_policy"]["input_schema"]["properties"]
     assert isinstance(search_properties, dict) and isinstance(policy_properties, dict)
-    assert search_properties["category"]["enum"] == [*CATEGORY_IDS, None]
+    assert search_properties["category"]["anyOf"] == [
+        {"type": "string", "enum": [*CATEGORY_IDS]},
+        {"type": "null"},
+    ]
     assert policy_properties["topic"]["enum"] == list(POLICY_TOPICS)
     for definition in TOOL_DEFINITIONS:
         description = definition["description"]

@@ -69,8 +69,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                     ),
                 },
                 "category": {
-                    "type": ["string", "null"],
-                    "enum": [*CATEGORY_IDS, None],
+                    "anyOf": [{"type": "string", "enum": [*CATEGORY_IDS]}, {"type": "null"}],
                     "description": (
                         "Catalog category slug: violão = violoes; ukulele = ukuleles; guitarra = "
                         "guitarras; baixo = baixos; teclado, piano, sintetizador, controlador = "
