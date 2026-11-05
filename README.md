@@ -130,11 +130,9 @@ A regra central é que toda afirmação sobre preço, estoque, promoção, parce
 
 Escolhi o loop manual em `reply` em vez de `client.beta.messages.tool_runner` porque o runner é beta e exige funções decoradas com `@beta_tool`, o que acoplaria `emporio_agent/tools.py` ao SDK. O loop tem 19 linhas e devolve o trace de cada chamada para testes e avaliação. Desvantagem: `stop_reason` e formato do histórico ficam sob responsabilidade do projeto. Aceita porque `tests/test_agent.py` cobre com cliente falso o caminho de ferramentas, o teto de rodadas, os erros do SDK e os três `stop_reason` que viram contingência (`refusal`, `max_tokens`, `model_context_window_exceeded`).
 
-### Next.js em vez de Streamlit
+### Next.js com React na interface
 
-O projeto começou em Streamlit, a pessoa dona decidiu migrar a interface para Next.js, o domínio foi reaproveitado e a validação foi refeita.
-
-A troca por Next.js 16 com React 19, em vez de manter o Streamlit, foi decisão da pessoa dona. Os validadores tinham registrado três problemas abertos na tela anterior, todos por falta de controle do HTML: rótulo fixo em inglês para leitor de tela em cada bolha, CSS preso a seletores internos de uma versão fixada e flash branco na carga do tema escuro. Com React, os três saem. Desvantagem: segunda linguagem, segundo gerenciador de pacotes e dois processos para subir. Aceita porque o TypeScript fica só na interface, e o agente e toda a regra de negócio continuam em Python, a linguagem principal que o enunciado exige. A saudação e o limite de 4.000 caracteres existem nos dois lados, e `tests/test_api.py` confere que a saudação é idêntica.
+Escolhi Next.js 16 com React 19 para a tela de chat porque ele dá controle total do HTML: rótulos de acessibilidade em português em cada bolha, tokens de cor próprios no CSS e tema escuro aplicado antes da primeira pintura, sem flash branco. Desvantagem: segunda linguagem, segundo gerenciador de pacotes e dois processos para subir. Aceita porque o TypeScript fica só na interface, e o agente e toda a regra de negócio continuam em Python, a linguagem principal que o enunciado exige. A saudação e o limite de 4.000 caracteres existem nos dois lados, e `tests/test_api.py` confere que a saudação é idêntica.
 
 ### API separada mínima com FastAPI
 
@@ -264,12 +262,12 @@ Falhas do próprio harness, como o C02, estão em [`docs/evaluation-scenarios.md
 
 ## Uso de assistentes de IA
 
-O código, os testes e este README foram escritos por agentes do Claude Code. A pessoa dona do projeto definiu a arquitetura (function calling com ferramentas fechadas, SQLite carregado dos CSVs, políticas por seção sem vector store, loop manual, Claude como modelo, a interface inicial e depois a migração para Next.js), os critérios de aprovação e o processo.
+O código, os testes e este README foram escritos por agentes do Claude Code. A pessoa dona do projeto definiu a arquitetura (function calling com ferramentas fechadas, SQLite carregado dos CSVs, políticas por seção sem vector store, loop manual, Claude como modelo, Next.js na interface), os critérios de aprovação e o processo.
 
 O workflow teve um Claude Code orquestrando etapas com agentes separados:
 
-1. Benchmarking: quatro relatórios (arquiteturas de agente, o que avaliadores valorizam, design de chat, limites da primeira interface).
-2. Critérios de sucesso: 138 critérios em dez frentes, cada um com o que vale nota 9 e como verificar. Conflitos entre frentes foram resolvidos em um contrato único, e a migração ganhou um contrato próprio.
+1. Benchmarking: três relatórios (arquiteturas de agente, o que avaliadores valorizam, design de chat).
+2. Critérios de sucesso: 138 critérios em dez frentes, cada um com o que vale nota 9 e como verificar. Conflitos entre frentes foram resolvidos em um contrato único.
 3. Escritores por frente: dados e ferramentas, agente, API, interface e acabamento visual.
 4. Validadores isolados: sem contato com quem escreveu, com acesso só ao repositório, aos critérios e ao contrato, e obrigados a citar evidência. A frente só passa sem item errado e sem nota abaixo de 9. Reprovou, volta para o escritor com a lista de correções.
 
@@ -293,7 +291,7 @@ O histórico local foi reorganizado antes do primeiro push: mensagens corrigidas
 
 Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e `reply` falso atrás da API real. O comportamento do modelo só conta como medido na rodada ao vivo descrita em [Como testar e avaliar](#como-testar-e-avaliar).
 
-Rodadas de validação, todas sem resposta real do modelo: 4 de dados, ferramentas e agente e 6 de interface antes da migração, e 2 rodadas de validadores depois dela. As correções da segunda ainda não passaram por novo validador isolado.
+Rodadas de validação, todas sem resposta real do modelo: 4 de dados, ferramentas e agente e 2 de interface e API. As correções da segunda ainda não passaram por novo validador isolado.
 
 ## Conversas de exemplo
 
