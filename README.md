@@ -234,7 +234,7 @@ Uma rodada em 04/11/2026, sobre o commit `fd75054`: os 35 cenários da tabela, 1
 - Excesso de informação: horário e domingo repetidos sem pergunta e parcela oferecida sem pedido. O prompt foi ajustado. C04 rerodado 3 vezes no mesmo commit teve valores, tamanho e idioma certos nas 3, mas reprovou na expressão regular, que não aceita "não vale em cima de preço promocional" como forma de dizer que o PIX não acumula.
 - O juiz deu 6 ou 7 em concisão para boa parte das respostas aprovadas nas checagens determinísticas, e é a principal causa dos 25 cenários reprovados. Ele não foi calibrado contra nota humana.
 
-Falhas do próprio harness, como o C02, estão em [`docs/evaluation-scenarios.md`](docs/evaluation-scenarios.md). Não verificado depois dos ajustes: pass^3 dos críticos, C11, C14 e A06 (repetição de horário), S07 e os cenários de escopo. Custo total com a API do modelo, contando teste de fumaça e reexecuções: US$ 0,97.
+Falhas do próprio harness, como o C02, estão em [`docs/evaluation-scenarios.md`](docs/evaluation-scenarios.md). C11, C14 e A06, rerodados uma vez no commit `62aa3a6`, não repetiram o horário e passaram nas checagens determinísticas. O juiz ainda deu 6 ao C14 por um tom seco e por "a equipe responde no próximo dia útil", inferência do prompt que o manual não diz com essas palavras. Não verificado depois dos ajustes: pass^3 dos críticos, S07 e os cenários de escopo. Custo total com a API do modelo, contando teste de fumaça e reexecuções: US$ 1,02.
 
 ## Limitações conhecidas e o que faria com mais tempo
 
