@@ -19,8 +19,8 @@ Pré-requisitos:
 Instale e configure:
 
 ```bash
-git clone <url-deste-repositorio> emporio-da-musica-agent
-cd emporio-da-musica-agent
+git clone https://github.com/dudunog/emporio-da-musica.git
+cd emporio-da-musica
 uv sync
 pnpm --dir web install --frozen-lockfile
 cp .env.example .env
@@ -200,21 +200,41 @@ pnpm --dir web test
 pnpm --dir web build
 ```
 
-Só `uv run pytest -m live -q` chama a API do modelo; os demais rodam sem chave. `uv run pytest -q` executa 287 testes e deixa de fora os 23 ao vivo (`287 passed, 23 deselected`). Eles cobrem promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a API com `TestClient` e a regra de importação do domínio. `tests/test_api.py` e `tests/test_agent.py` importam `httpx2`, dependência de desenvolvimento, porque o `TestClient` usa esse pacote e os erros do SDK são construídos com ele.
+Só `uv run pytest -m live -q` chama a API do modelo; os demais rodam sem chave. `uv run pytest -q` executa 289 testes e deixa de fora os 23 ao vivo (`289 passed, 23 deselected`). Eles cobrem promoção, PIX e parcelas nas fronteiras de valor, disponibilidade, busca, pedidos e janelas, seções do manual, cada ferramenta com entrada válida e inválida, o loop com cliente falso, a API com `TestClient` e a regra de importação do domínio. `tests/test_api.py` e `tests/test_agent.py` importam `httpx2`, dependência de desenvolvimento, porque o `TestClient` usa esse pacote e os erros do SDK são construídos com ele.
 
 `pnpm --dir web test` executa 173 testes em 11 arquivos: lógica de envio, mapa de falhas, escape, `R$`, textos da interface (termos proibidos e nada em inglês), pares de contraste e os componentes principais. O script já é `vitest run`, então não passe `--run`: o pnpm 9.0.0 rejeita a opção. O navegador real ficou com os validadores, em baterias Playwright fora do repositório, com a API real e `reply` falso.
 
-`uv run pytest -m live -q` roda 23 testes de `tests/test_live_conversations.py` contra a API real e consome crédito: 8 conversas roteirizadas e 15 perguntas legítimas que a Lia não pode recusar. Sem chave, ou com o valor de exemplo, os 23 ficam como `skipped` (`23 skipped, 287 deselected`). Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. As conversas são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
+`uv run pytest -m live -q` roda 23 testes de `tests/test_live_conversations.py` contra a API real e consome crédito: 8 conversas roteirizadas e 15 perguntas legítimas que a Lia não pode recusar. Sem chave, ou com o valor de exemplo, os 23 ficam como `skipped` (`23 skipped, 289 deselected`). Cada turno confere ferramentas e argumentos, trechos obrigatórios e proibidos, limite de frases e de caracteres, valores em R$ e vazamento de dados de outros clientes. As conversas são `C01`, `C02`, `C04`, `C05`, `C08` com `C09`, `C10`, `C13` e `C15`.
 
-A avaliação completa é um roteiro que chama `reply` direto, com a data fixada: os 23 cenários de [`docs/evaluation-scenarios.md`](docs/evaluation-scenarios.md), mais 55 de escopo e 26 de comportamento de conversa, 152 execuções no total. O roteiro e o harness ficaram fora deste repositório por decisão de escopo, então daqui só dá para rerodar o subconjunto acima.
+A avaliação completa é um roteiro que chama `reply` direto, com a data fixada: os 35 cenários de [`docs/evaluation-scenarios.md`](docs/evaluation-scenarios.md) (23 iniciais e 12 acrescentados depois de uma revisão no papel de avaliador da empresa), mais 55 de escopo e 26 de comportamento de conversa. O roteiro e o harness ficaram fora deste repositório por decisão de escopo, então daqui só dá para rerodar o subconjunto acima.
 
-Os 9 cenários críticos, os 8 em negrito na tabela mais o S07 (de escopo, injeção indireta na descrição do produto), rodam 3 vezes e só passam com 3 de 3 (pass^3), porque o [τ-bench](https://arxiv.org/abs/2406.12045) mostra que agentes com as ferramentas certas ainda falham de forma intermitente e média esconde isso. Os outros 15 da tabela rodam uma vez, o que dá 39 execuções só na tabela.
+Os 12 cenários críticos, os 11 em negrito na tabela mais o S07 (de escopo, injeção indireta na descrição do produto), foram desenhados para rodar 3 vezes e só passar com 3 de 3 (pass^3), porque o [τ-bench](https://arxiv.org/abs/2406.12045) mostra que agentes com as ferramentas certas ainda falham de forma intermitente e média esconde isso. Os demais rodam uma vez. A rodada com 3 execuções ainda não foi feita, por orçamento.
 
 A checagem de valores é determinística. Todo R$ da resposta precisa aparecer em um resultado de ferramenta da conversa, derivar dele por regra conhecida (parcela de 2x a 12x, diferença entre dois valores) ou ser constante do manual (35, 50, 80, 100, 500, 2.000). Turnos com resposta conhecida usam lista fechada de valores e lista de valores proibidos, como R$ 5.243,13 (PIX aplicado sobre a promoção do Taylor 110e) e R$ 9.774,15 (promoção expirada do Martin D-28). A versão do repositório, em `tests/money_grounding.py`, aceita só valores das ferramentas, constantes do manual e a diferença entre dois valores, sem parcela derivada, porque as ferramentas já entregam esses números prontos. As demais checagens cobrem trajetória de ferramentas, regex, tamanho, termos em inglês ou nomes de campo na resposta e vazamento de dados de clientes.
 
-A tabela de cenários diz o que cada um verifica, sem resultado individual. Sem chave, nenhuma conversa real rodou até agora: só C21 e C22, que testam falha de chave e de rede, foram executados, e o único contato com a API da Anthropic foi o 401 da chave inválida. Resultado de execução ao vivo só é citado aqui quando há registro da execução.
+A tabela de cenários diz o que cada um verifica, sem resultado individual. Resultado ao vivo só é citado aqui quando há registro da execução (resumo e transcrição por cenário, fora do repositório, como o harness).
 
-<!-- RESULTADOS-AVALIACAO -->
+### Resultado da rodada ao vivo
+
+Uma rodada em 04/11/2026, sobre o commit `fd75054`: os 35 cenários da tabela, 1 execução cada, 54 turnos, agente `claude-opus-5-5` e juiz `claude-haiku-5-5`. Custou US$ 0,77, com teto de US$ 0,90 imposto pelo harness. S07 e os cenários de escopo e de conversa ficaram de fora, por orçamento.
+
+| Métrica | Resultado |
+|---|---|
+| Ferramentas e argumentos certos | 32 de 33 execuções |
+| Todo R$ vindo de ferramenta, regra ou manual | 24 de 26 turnos com valor |
+| Valor proibido (PIX sobre promoção, promoção expirada e afins) | 0 de 54 turnos |
+| Dado de outro cliente na resposta | 0 de 54 turnos |
+| Dentro do limite de frases | 43 de 54 turnos |
+| Só português, sem rascunho nem emoji | 52 de 54 turnos |
+| Falha de chave e de rede tratadas | 2 de 2 |
+| Mediana de tempo por turno | 4,1 s |
+| Cenários aprovados em todas as checagens e com juiz >= 8 | 10 de 35 |
+
+- C10: a primeira resposta saiu com emoji, um rascunho em inglês e só então o texto ao cliente. Nenhum dado da titular apareceu. O prompt passou a exigir só a mensagem final, e C10 rerodado uma vez no commit `62aa3a6` passou nas checagens determinísticas.
+- Excesso de informação: horário e domingo repetidos sem pergunta e parcela oferecida sem pedido. O prompt foi ajustado. C04 rerodado 3 vezes no mesmo commit teve valores, tamanho e idioma certos nas 3, mas reprovou na expressão regular, que não aceita "não vale em cima de preço promocional" como forma de dizer que o PIX não acumula.
+- O juiz deu 6 ou 7 em concisão para boa parte das respostas aprovadas nas checagens determinísticas, e é a principal causa dos 25 cenários reprovados. Ele não foi calibrado contra nota humana.
+
+Falhas do próprio harness, como o C02, estão em [`docs/evaluation-scenarios.md`](docs/evaluation-scenarios.md). Não verificado depois dos ajustes: pass^3 dos críticos, C11, C14 e A06 (repetição de horário), S07 e os cenários de escopo. Custo total com a API do modelo, contando teste de fumaça e reexecuções: US$ 0,97.
 
 ## Limitações conhecidas e o que faria com mais tempo
 
@@ -239,6 +259,7 @@ A tabela de cenários diz o que cada um verifica, sem resultado individual. Sem 
 | Catálogo em memória | SQLite carregado dos CSVs uma vez por processo: mudança de preço ou estoque só aparece depois de reiniciar, e pedido nenhum muda de situação | Trocar a origem por um banco da loja mantendo as assinaturas das ferramentas |
 | Limite fixo de saída | `MAX_OUTPUT_TOKENS = 1024` inclui o raciocínio. Se estourar, o cliente vê "Essa resposta ficou longa demais" e precisa perguntar de novo | Medir o consumo real por tipo de resposta e ajustar o limite |
 | Sem métricas de uso | O log registra só nome da ferramenta e erro. Custo e latência por conversa são desconhecidos | Registrar `usage` e tempo por turno, sem dados pessoais |
+| Avaliação ao vivo com uma execução por cenário | O vazamento de rascunho do C10 apareceu uma vez em 54 turnos, e uma execução só não mede falha intermitente. O juiz é um modelo menor, sem calibração contra nota humana | Rodar os críticos 3 vezes a cada mudança de prompt e calibrar o juiz com 20 ou 30 turnos avaliados por uma pessoa |
 | Sem avaliação do modelo em CI | Regressão de prompt só aparece para quem roda `uv run pytest -m live` à mão, com chave | Rodar a suíte ao vivo em CI a cada mudança de prompt, com orçamento definido |
 
 ## Uso de assistentes de IA
@@ -260,6 +281,8 @@ O que foi rejeitado ou corrigido por causa dos validadores:
 - Mutações que os testes não pegavam: das 45 aplicadas em `web/`, 16 sobreviviam com 133 testes verdes, entre elas remover o `ResizeObserver` e fazer o hook de rolagem sempre puxar o leitor, porque só as funções puras eram testadas. Um teste de limite de mensagem continuava verde com o limite em 40.000. Entraram testes de comportamento em `web/src/features/chat/components/chat-behavior.test.tsx`. Na bateria rerodada, com 44 mutações porque o código de uma delas saiu, só sobrevive trocar `useLayoutEffect` por `useEffect`, que depende do tempo de pintura no navegador.
 - Parâmetro `query` em `search_products`: o contrato proibia esse nome, e outro validador reproduziu `query="Yamaha F310 violão"` devolvendo lista vazia, porque o filtro era um trecho contínuo do nome. Virou `name_contains`, com busca por palavras normalizadas.
 - Teste ao vivo chamando a API com a chave de exemplo: em clone limpo, depois de `cp .env.example .env`, `uv run pytest -q` terminou com `8 failed, 134 passed`, porque o `skipif` só testava a presença da variável. Os testes ao vivo passaram a exigir `-m live` e tratam o valor de exemplo como chave ausente.
+- Esquema rejeitado pela API: `search_products` declarava `category` com `"type": ["string", "null"]` e `null` dentro do `enum`. Nenhum validador pegou, porque todos rodaram sem chave. A primeira chamada real voltou 400, o que derrubaria todas as conversas. Virou `anyOf`, e o endpoint de contagem de tokens, que não gera custo, passou a validar o esquema.
+- Produto "em breve" com preço de venda, PIX e parcela, o que convidava a vender o que ainda não existe, e CNPJ nas informações da loja, que poderia ser passado ao cliente como chave PIX. Os dois saíram das ferramentas.
 - Saudação no histórico: o contrato mandava enviá-la como primeiro turno do assistente, o validador questionou e a API exige que a primeira mensagem seja do usuário. A decisão foi revista: a saudação fica só na tela e o prompt declara que ela já foi exibida.
 
 Verificação: ruff, mypy, pytest, lint, `tsc`, Vitest e build passando, além de clone limpo e medições no navegador. Os comandos de execução e de teste deste texto foram rerodados e as afirmações conferidas contra o código.
@@ -268,9 +291,9 @@ Verificação: ruff, mypy, pytest, lint, `tsc`, Vitest e build passando, além d
 
 O histórico local foi reorganizado antes do primeiro push: mensagens corrigidas, typecheck dos primeiros commits corrigido, valores falsos de teste com formato de chave trocados (nenhuma chave real entrou no histórico) e commits grandes divididos ou reordenados. A árvore final ficou idêntica a cada reorganização. Commits divididos ou movidos ficaram com a data do commit original ou do vizinho, por isso vários têm o mesmo horário.
 
-Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e `reply` falso atrás da API real. O comportamento do modelo só conta como medido a partir da execução descrita na avaliação.
+Limites do método: os validadores também são agentes, e as rodadas de validação rodaram com leitura do prompt, simulação de respostas e `reply` falso atrás da API real. O comportamento do modelo só conta como medido na rodada ao vivo descrita em [Como testar e avaliar](#como-testar-e-avaliar).
 
-Rodadas de validação até agora, todas sem resposta real do modelo: 4 de dados, ferramentas e agente e 6 de interface antes da migração, e 2 rodadas de validadores depois dela. As correções da segunda ainda não passaram por novo validador isolado.
+Rodadas de validação, todas sem resposta real do modelo: 4 de dados, ferramentas e agente e 6 de interface antes da migração, e 2 rodadas de validadores depois dela. As correções da segunda ainda não passaram por novo validador isolado.
 
 ## Conversas de exemplo
 
