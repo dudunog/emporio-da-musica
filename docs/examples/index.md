@@ -26,5 +26,5 @@ Capturadas com Playwright no app real (Next.js e API) rodando a conversa 02. Cad
 ## Observações da revisão
 
 - 01, turno 2: a Lia respondeu sem chamar ferramenta, com o resultado da busca do turno 1, que já trazia o GF-3D como esgotado. A conferência automática pedia uma consulta nova; a resposta está correta.
-- 04, turno 2: a Lia disse que o prazo "terminou", palavra que a conferência automática não aceitava. O ponto fraco real é outro: ela perguntou "Quer que eu passe o contato?" em vez de passar o WhatsApp, e o turno 3 ficou longo, com 5 frases.
-- Telas, desktop: a última resposta ofereceu calcular o PIX do Martin D-28 sem o cliente pedir, o que o prompt proíbe. O valor citado (5%) está certo, porque o produto não tem promoção ativa.
+- 04, turno 2: a Lia disse que o prazo "terminou", palavra que a conferência automática não aceitava. O ponto fraco real é outro: ela perguntou "Quer que eu passe o contato?" em vez de passar o WhatsApp, e o turno 3 ficou longo, com 5 frases. O prompt passou a exigir o WhatsApp na própria resposta no commit `62d3d7e`, e o pass^3 seguinte não repetiu a pergunta nos 3 C10 nem nos 3 A02.
+- Telas, desktop: a última resposta ofereceu calcular o PIX do Martin D-28 sem o cliente pedir, o que o prompt proíbe. O valor citado (5%) está certo, porque o produto não tem promoção ativa. A regra foi reforçada em `62d3d7e`, mas o pass^3 ainda pegou o mesmo deslize em 1 de 3 execuções do C05.
