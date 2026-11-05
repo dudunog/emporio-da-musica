@@ -218,6 +218,7 @@ def test_system_prompt_sent_stays_within_word_ceiling() -> None:
         "a desconto, as condições reais: 5% no PIX e promoções ativas",
         "cite o preço de tabela, os 5% de desconto e o valor",
         "com resposta automática fora do expediente. Não prometa quando a equipe responde",
+        "salvo feriado; nunca diga qual data é feriado",
         "nunca rascunho, plano, nota para si mesma, emoji ou texto em inglês",
         "(bateria, piano, contrabaixos)",
         "quando defect_exchange_window_open for falso",
