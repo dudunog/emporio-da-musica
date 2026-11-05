@@ -127,8 +127,8 @@ def test_installment_plan_uses_promotional_price_as_base() -> None:
     assert ohana.installment_value_brl == Decimal("87.84")
     assert ohana.installment_note == "sem juros no cartão de crédito"
     assert ohana.installment_rule_note == (
-        "até 12x sem juros no cartão; parcela mínima de R$ 80,00 de 4x a 6x "
-        "e de R$ 100,00 de 7x a 12x"
+        "até 12x sem juros no cartão; parcela mínima de R$ 50,00 de 2x a 3x, "
+        "de R$ 80,00 de 4x a 6x e de R$ 100,00 de 7x a 12x"
     )
     takamine = get_product(95)
     assert takamine is not None

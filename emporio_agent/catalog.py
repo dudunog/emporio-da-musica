@@ -178,15 +178,12 @@ SEARCH_IGNORED_CHARACTERS = str.maketrans("", "", "-")
 MIN_SEARCH_TOKEN_LENGTH = 2
 PLURAL_SUFFIXES: dict[str, str] = {"oes": "ao", "s": ""}
 
-PIX_NOTE_LIST_PRICE = "Preço à vista no PIX com 5% de desconto."
+PIX_NOTE_LIST_PRICE = f"Preço à vista no PIX com {PIX_DISCOUNT_PERCENT}% de desconto."
 PIX_NOTE_PROMOTIONAL = (
-    "O desconto de 5% do PIX não se aplica a preço promocional; "
+    f"O desconto de {PIX_DISCOUNT_PERCENT}% do PIX não se aplica a preço promocional; "
     "à vista no PIX paga o preço promocional."
 )
 INSTALLMENT_NOTE = "sem juros no cartão de crédito"
-INSTALLMENT_RULE_NOTE = (
-    "até 12x sem juros no cartão; parcela mínima de R$ 80,00 de 4x a 6x e de R$ 100,00 de 7x a 12x"
-)
 NO_PRICE_QUOTE: PriceQuote = {
     "list_price_brl": None,
     "promotion": None,
@@ -489,6 +486,14 @@ def catalog_connection() -> sqlite3.Connection:
 
 def format_brl(value: Decimal) -> str:
     return BRL_PREFIX + format(value.quantize(CENTS), ",.2f").translate(BRL_SEPARATORS)
+
+
+INSTALLMENT_RULE_NOTE = (
+    f"até {MAX_INSTALLMENTS}x sem juros no cartão; parcela mínima de "
+    f"{format_brl(MINIMUM_INSTALLMENT_BRL_UP_TO_3)} de 2x a 3x, "
+    f"de {format_brl(MINIMUM_INSTALLMENT_BRL_4_TO_6)} de 4x a 6x "
+    f"e de {format_brl(MINIMUM_INSTALLMENT_BRL_7_TO_12)} de 7x a {MAX_INSTALLMENTS}x"
+)
 
 
 def brl_from_cents(cents: int) -> Decimal:
