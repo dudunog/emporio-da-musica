@@ -50,6 +50,22 @@ def test_search_price_limits_are_inclusive() -> None:
     assert 91 not in from_999
 
 
+def test_search_price_range_uses_the_promotional_price_when_active() -> None:
+    up_to_2000 = search_products(None, "violoes", None, Decimal("2000"))
+    crafter = next(summary for summary in up_to_2000 if summary.product_id == 90)
+    assert crafter.list_price_brl == Decimal("2399.00")
+    assert crafter.promotional_price_brl == Decimal("1967.18")
+    from_2000 = search_products(None, "violoes", Decimal("2000"), None)
+    assert 90 not in [summary.product_id for summary in from_2000]
+
+
+def test_search_with_price_range_skips_items_without_price() -> None:
+    product_ids = [summary.product_id for summary in search_products(None, None, None, None)]
+    assert 130 in product_ids
+    priced_ids = [summary.product_id for summary in search_products(None, None, Decimal("0"), None)]
+    assert 130 not in priced_ids
+
+
 def test_search_empty_categories_return_empty_lists() -> None:
     assert search_products(None, "sopro_madeiras", None, None) == []
     assert search_products(None, "sopro_metais", None, None) == []

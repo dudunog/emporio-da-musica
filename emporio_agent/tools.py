@@ -81,11 +81,17 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                 },
                 "min_price_brl": {
                     **OPTIONAL_NUMBER_SCHEMA,
-                    "description": "Minimum list price in BRL, inclusive.",
+                    "description": (
+                        "Minimum price in BRL, inclusive; the promotional price counts "
+                        "when a promotion is active."
+                    ),
                 },
                 "max_price_brl": {
                     **OPTIONAL_NUMBER_SCHEMA,
-                    "description": "Maximum list price in BRL, inclusive.",
+                    "description": (
+                        "Maximum price in BRL, inclusive; the promotional price counts "
+                        "when a promotion is active."
+                    ),
                 },
             },
             "required": ["name_contains", "category", "min_price_brl", "max_price_brl"],

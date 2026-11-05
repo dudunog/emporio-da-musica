@@ -415,8 +415,6 @@ FROM products
 LEFT JOIN promotions
     ON promotions.product_id = products.product_id AND promotions.is_active = 1
 WHERE (:category_id IS NULL OR products.category_id = :category_id)
-  AND (:min_cents IS NULL OR products.price_cents >= :min_cents)
-  AND (:max_cents IS NULL OR products.price_cents <= :max_cents)
   AND (:include_discontinued OR products.status != 'discontinued')
 ORDER BY products.price_cents ASC, products.product_id ASC
 """
@@ -495,12 +493,6 @@ def format_brl(value: Decimal) -> str:
 
 def brl_from_cents(cents: int) -> Decimal:
     return (Decimal(cents) / CENTS_PER_BRL).quantize(CENTS)
-
-
-def cents_from_brl(value: Decimal | None) -> int | None:
-    if value is None:
-        return None
-    return int((value * CENTS_PER_BRL).to_integral_value(rounding=ROUND_HALF_UP))
 
 
 def pix_price(list_price: Decimal) -> Decimal:
@@ -613,14 +605,28 @@ def search_products(
     tokens = None if name_contains is None else search_tokens(name_contains)
     parameters = {
         "category_id": category_id_of(category),
-        "min_cents": cents_from_brl(min_price_brl),
-        "max_cents": cents_from_brl(max_price_brl),
         "include_discontinued": tokens is not None,
     }
     rows = catalog_connection().execute(SEARCH_PRODUCTS_SQL, parameters).fetchall()
-    return [
+    summaries = [
         summary_from_row(row) for row in rows if matches_every_token(row["search_text"], tokens)
     ]
+    return [
+        summary
+        for summary in summaries
+        if within_price_range(summary, min_price_brl, max_price_brl)
+    ]
+
+
+def within_price_range(
+    summary: ProductSummary, min_price_brl: Decimal | None, max_price_brl: Decimal | None
+) -> bool:
+    price = summary.promotional_price_brl or summary.list_price_brl
+    if price is None:
+        return min_price_brl is None and max_price_brl is None
+    above_minimum = min_price_brl is None or price >= min_price_brl
+    below_maximum = max_price_brl is None or price <= max_price_brl
+    return above_minimum and below_maximum
 
 
 def get_product(product_id: int) -> ProductDetail | None:
