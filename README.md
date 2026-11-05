@@ -287,7 +287,7 @@ O que foi rejeitado ou corrigido por causa dos validadores:
 
 Verificação: ruff, mypy, pytest, lint, `tsc`, Vitest e build passando, além de clone limpo e medições no navegador. Os comandos de execução e de teste deste texto foram rerodados e as afirmações conferidas contra o código.
 
-<!-- REVISAO-HUMANA -->
+Além da arquitetura, a pessoa dona do projeto exigiu o processo de critérios com validadores isolados. Pôs teto de gasto para os testes com o modelo real e aprovou cada rodada paga. Antes da avaliação ao vivo, pediu um agente isolado no papel de avaliador da empresa para prever como o agente seria testado, e dele vieram os cenários A01 a A12. Quando a Lia citou Finados por conta própria, foi conferir o manual: como ele fecha em feriados sem listar as datas, a regra ficou presa ao texto do manual em vez de ganhar um calendário inventado. Antes da entrega, pediu um code review do projeto inteiro, e só entraram as correções confirmadas no código.
 
 O histórico local foi reorganizado antes do primeiro push: mensagens corrigidas, typecheck dos primeiros commits corrigido, valores falsos de teste com formato de chave trocados (nenhuma chave real entrou no histórico) e commits grandes divididos ou reordenados. A árvore final ficou idêntica a cada reorganização. Commits divididos ou movidos ficaram com a data do commit original ou do vizinho, por isso vários têm o mesmo horário.
 
