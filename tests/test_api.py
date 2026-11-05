@@ -41,6 +41,8 @@ WEB_CHAT_DIR = REPO_ROOT / "web" / "src" / "features" / "chat"
 WEB_SOURCE_PATTERNS = ("*.ts", "*.tsx")
 WEB_TEST_FILE_PATTERN = re.compile(r"\.test\.tsx?$")
 WEB_GREETING_PATTERN = re.compile(r"\b\w*GREETING\w*\b[^=\n]*=\s*([\"'`])(.*?)\1", re.DOTALL)
+WEB_COMPOSER_RULES = WEB_CHAT_DIR / "composer-rules.ts"
+WEB_MAX_LENGTH_PATTERN = re.compile(r"\bMAX_MESSAGE_LENGTH\s*=\s*(\d+)")
 CHAT_PATH = "/api/chat"
 FAKE_ANSWER = "O Takamine GD20 custa R$ 2.199,00."
 SECRET_ERROR_DETAIL = "secret-marker traceback /Users/internal/path.py"
@@ -1044,3 +1046,9 @@ def test_web_greeting_is_identical_to_agent_greeting() -> None:
 
     assert greetings, f"no GREETING constant found under {WEB_CHAT_DIR}"
     assert set(greetings) == {GREETING}
+
+
+def test_web_message_limit_matches_api_limit() -> None:
+    limits = WEB_MAX_LENGTH_PATTERN.findall(read_if_present(WEB_COMPOSER_RULES))
+
+    assert limits == [str(MAX_MESSAGE_LENGTH)]
