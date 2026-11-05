@@ -4,7 +4,7 @@ Agente de atendimento por texto da Empório da Música (loja fictícia de instru
 
 Python é a linguagem principal, como exige a única restrição técnica do enunciado: o agente, as ferramentas e toda a regra de negócio ficam em `emporio_agent/`. O TypeScript fica só na interface, em `web/`, que desenha a tela e envia as mensagens por HTTP a uma API FastAPI de uma rota, por isso são dois processos para subir.
 
-<!-- SCREENSHOTS -->
+<img src="docs/examples/screenshots/02-preco-promocao-pix-desktop-light.png" alt="Conversa sobre preço, promoção e PIX no desktop, tema claro" width="620"> <img src="docs/examples/screenshots/02-preco-promocao-pix-mobile-dark.png" alt="A mesma conversa no celular, tema escuro" width="190">
 
 ## Como rodar
 
@@ -234,7 +234,7 @@ Uma rodada em 04/11/2026, sobre o commit `fd75054`: os 35 cenários da tabela, 1
 - Excesso de informação: horário e domingo repetidos sem pergunta e parcela oferecida sem pedido. O prompt foi ajustado. C04 rerodado 3 vezes no mesmo commit teve valores, tamanho e idioma certos nas 3, mas reprovou na expressão regular, que não aceita "não vale em cima de preço promocional" como forma de dizer que o PIX não acumula.
 - O juiz deu 6 ou 7 em concisão para boa parte das respostas aprovadas nas checagens determinísticas, e é a principal causa dos 25 cenários reprovados. Ele não foi calibrado contra nota humana.
 
-Falhas do próprio harness, como o C02, estão em [`docs/evaluation-scenarios.md`](docs/evaluation-scenarios.md). C11, C14 e A06, rerodados uma vez no commit `62aa3a6`, não repetiram o horário e passaram nas checagens determinísticas. A regra que prometia retorno "no próximo dia útil" virou o texto do manual (resposta automática fora do expediente), e o C14 rerodado teve juiz 8, 6 e 9: com a data fixada em domingo, 01/11/2026, a Lia disse por conta própria que 02/11 é Finados, data certa mas fora das ferramentas, e manteve que a loja abre na segunda. O prompt passou a proibir dizer qual data é feriado, já que o manual não lista feriados; isso ainda não rodou com o modelo. Não verificado depois dos ajustes: pass^3 dos críticos, S07 e os cenários de escopo. Custo total com a API do modelo, contando teste de fumaça e reexecuções: US$ 1,09.
+Falhas do próprio harness, como o C02, estão em [`docs/evaluation-scenarios.md`](docs/evaluation-scenarios.md). C11, C14 e A06, rerodados uma vez no commit `62aa3a6`, não repetiram o horário e passaram nas checagens determinísticas. A regra que prometia retorno "no próximo dia útil" virou o texto do manual (resposta automática fora do expediente), e o C14 rerodado teve juiz 8, 6 e 9: com a data fixada em domingo, 01/11/2026, a Lia disse por conta própria que 02/11 é Finados, data certa mas fora das ferramentas, e manteve que a loja abre na segunda. O prompt passou a proibir dizer qual data é feriado, já que o manual não lista feriados; isso ainda não rodou com o modelo. Não verificado depois dos ajustes: pass^3 dos críticos, S07 e os cenários de escopo. Custo total com a API do modelo, contando teste de fumaça, reexecuções e as conversas de exemplo: US$ 1,34. A captura das telas rodou o app sem medição de gasto.
 
 ## Limitações conhecidas e o que faria com mais tempo
 
@@ -297,4 +297,4 @@ Rodadas de validação, todas sem resposta real do modelo: 4 de dados, ferrament
 
 ## Conversas de exemplo
 
-<!-- INDICE-EXEMPLOS -->
+Cinco conversas reais com `claude-opus-5-5`, geradas em 05/11/2026 sobre o commit `4ffe906`, estão em [`docs/examples/`](docs/examples/index.md): busca com filtro e item esgotado, preço com promoção e PIX, status de pedido com previsão vencida, devolução fora do prazo com defeito e cancelamento, e pedido fora do escopo. Cada turno mostra as ferramentas chamadas e o resumo do que voltou. O índice traz as telas em desktop e celular, nos dois temas, e o que a revisão achou de fraco nas respostas.
