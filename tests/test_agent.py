@@ -219,6 +219,8 @@ def test_system_prompt_sent_stays_within_word_ceiling() -> None:
         "cite o preço de tabela, os 5% de desconto e o valor",
         "com resposta automática fora do expediente. Não prometa quando a equipe responde",
         "salvo feriado; nunca diga qual data é feriado",
+        "Oferecer o contato é escrevê-lo, nunca perguntar se o cliente quer",
+        "que o cliente não perguntou sobre aquele produto, nem ofereça calcular",
         "nunca rascunho, plano, nota para si mesma, emoji ou texto em inglês",
         "(bateria, piano, contrabaixos)",
         "quando defect_exchange_window_open for falso",
